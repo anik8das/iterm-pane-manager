@@ -1,0 +1,10 @@
+.DS_Store
+*.html
+*.log
+*.pyc
+__pycache__/
+node_modules/
+venv/
+.coverage
+.ruff_cache/
+dist/

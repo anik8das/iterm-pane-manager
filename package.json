@@ -1,0 +1,41 @@
+{
+  "name": "iterm-pane-manager",
+  "version": "1.0.0",
+  "description": "Focus-safe automatic pane evening and exact-tab document previews for iTerm2",
+  "type": "module",
+  "private": true,
+  "author": "Aniket Das <aniketdas001@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anik8das/iterm-pane-manager.git"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "bin": {
+    "pane": "./bin/pane.mjs",
+    "mdrender": "./bin/mdrender.mjs"
+  },
+  "scripts": {
+    "audit": "npm audit --omit=dev",
+    "check": "node --check bin/pane.mjs && node --check bin/mdrender.mjs",
+    "lint": "eslint .",
+    "test": "node --test tests/node/*.test.mjs"
+  },
+  "dependencies": {
+    "mermaid": "11.17.2",
+    "playwright": "1.62.1",
+    "rehype-stringify": "10.0.1",
+    "remark-gfm": "4.0.1",
+    "remark-parse": "11.0.0",
+    "remark-rehype": "11.1.2",
+    "unified": "11.0.5",
+    "unist-util-visit": "5.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.9.1",
+    "globals": "17.11.0"
+  }
+}
