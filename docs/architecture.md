@@ -20,6 +20,22 @@ The design separates document delivery from automatic evening. The watcher has n
 
 `bin/pane.mjs` validates input, resolves files and URLs, serializes state changes, and invokes small Python helpers. It refuses to open a document without `ITERM_SESSION_ID`, because there is no safe target tab without the calling session's stable ID.
 
+### Rendering boundary
+
+```mermaid
+flowchart LR
+    MD["src/node/markdown.mjs"] --> BODY["HTML body + charts + title"]
+    BODY --> FILL["fillDiagrams"]
+    CLI2["bin/mdrender.mjs"] --> MD
+    CLI2 --> PW["Chromium renders each chart"]
+    PW --> FILL
+    FILL --> PAGE["Self-contained page"]
+```
+
+`src/node/markdown.mjs` owns Markdown to HTML and needs no browser, so the pipeline is testable without Chromium. It emits one placeholder per Mermaid block and `fillDiagrams` substitutes the rendered SVG.
+
+Raw HTML in a source document is discarded. The diagram placeholder therefore carries an explicit `hName`/`hProperties` shape rather than being a raw HTML node, which keeps untrusted markup out of the page without losing the placeholder. YAML and TOML frontmatter are parsed so they are dropped rather than rendered. As in every frontmatter-aware renderer, an opening `---` is a fence rather than a thematic break, so a document that starts with a rule loses its first block; a rule anywhere else is untouched. The title comes from the first non-empty level-1 heading at the top level of the tree, ignoring headings quoted inside blockquotes or list items, and falls back to the file name.
+
 ### iTerm2 boundary
 
 Python is used only where the iTerm2 API is required:

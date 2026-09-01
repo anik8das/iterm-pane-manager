@@ -5,12 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { chromium } from "playwright";
-import remarkGfm from "remark-gfm";
-import remarkParse from "remark-parse";
-import remarkRehype from "remark-rehype";
-import rehypeStringify from "rehype-stringify";
-import { unified } from "unified";
-import { SKIP, visit } from "unist-util-visit";
+import { fillDiagrams, markdownToBody } from "../src/node/markdown.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -47,21 +42,6 @@ function writeAtomic(output, content) {
     }
     throw error;
   }
-}
-
-function mermaidExtractor(charts) {
-  return () => (tree) => {
-    visit(tree, "code", (node, index, parent) => {
-      if (!parent || index === null || index === undefined) return;
-      if ((node.lang ?? "").toLowerCase() !== "mermaid") return;
-      const chartIndex = charts.push(node.value) - 1;
-      parent.children[index] = {
-        type: "html",
-        value: `<div class="diagram" data-index="${chartIndex}"></div>`,
-      };
-      return SKIP;
-    });
-  };
 }
 
 async function renderDiagrams(charts) {
@@ -176,30 +156,17 @@ async function main(args) {
   if (!source.toLowerCase().endsWith(".md")) throw new Error("input must end in .md");
 
   const markdown = fs.readFileSync(source, "utf8");
-  const charts = [];
-  let body = String(
-    await unified()
-      .use(remarkParse)
-      .use(mermaidExtractor(charts))
-      .use(remarkGfm)
-      .use(remarkRehype)
-      .use(rehypeStringify)
-      .process(markdown),
-  );
+  const { body: rawBody, charts, title: heading } = await markdownToBody(markdown);
   const diagrams = await renderDiagrams(charts);
-  body = body.replace(
-    /<div class="diagram" data-index="(\d+)"><\/div>/g,
-    (_match, rawIndex) => {
-      const index = Number(rawIndex);
-      const result = diagrams[index];
-      if (!result || result.error) {
-        return `<div class="diagram error">Diagram ${index + 1} failed: ${escapeHtml(result?.error ?? "missing result")}</div>`;
-      }
-      return `<figure class="diagram"><div class="diagram-scroll">${result.svg}</div></figure>`;
-    },
-  );
+  const body = fillDiagrams(rawBody, (index) => {
+    const result = diagrams[index];
+    if (!result || result.error) {
+      return `<div class="diagram error">Diagram ${index + 1} failed: ${escapeHtml(result?.error ?? "missing result")}</div>`;
+    }
+    return `<figure class="diagram"><div class="diagram-scroll">${result.svg}</div></figure>`;
+  });
 
-  const title = (markdown.match(/^#\s+(.+)$/m)?.[1] ?? path.basename(source, ".md")).trim();
+  const title = heading || path.basename(source).replace(/\.md$/i, "");
   const output = source.replace(/\.md$/i, ".html");
   writeAtomic(output, pageTemplate(title, body));
   console.log(output);
