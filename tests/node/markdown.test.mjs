@@ -47,9 +47,11 @@ test("the title comes from the first real top-level heading", async () => {
     ["```bash\n# install the thing\n```\n\n# Real Title\n", "Real Title"],
     ["Real Title\n==========\n\nbody\n", "Real Title"],
     ["# The `pane` tool\n", "The pane tool"],
-    // An empty or image-only heading is not a title; keep looking.
+    // An empty or image-only heading is a masthead, not a title; keep looking.
     ["# \n\nintro\n\n# Real Title\n", "Real Title"],
-    ["# ![logo](x.png)\n\n# Real Title\n", "logo"],
+    ["# ![logo](x.png)\n\n# Real Title\n", "Real Title"],
+    // An image beside real text still yields the text.
+    ["# ![](x.png) Getting Started\n", "Getting Started"],
     // A heading quoted inside a blockquote or list is someone else's title.
     ["> # Quoted\n\n# Actual Title\n", "Actual Title"],
     ["- # Listed\n\n# Actual Title\n", "Actual Title"],
@@ -69,6 +71,8 @@ test("a Mermaid block survives as a placeholder the caller can fill", async () =
   assert.match(fillDiagrams(html, (index) => `<svg data-i="${index}"/>`), /<svg data-i="0"\/>/);
 });
 
-test("raw HTML in the source is still stripped", async () => {
-  assert.doesNotMatch(await body("<script>bad()</script>\n\n# Title\n"), /<script>/);
+test("raw HTML in the source is still stripped, whatever its case", async () => {
+  for (const raw of ["<script>bad()</script>", "<SCRIPT>bad()</SCRIPT>"]) {
+    assert.doesNotMatch(await body(`${raw}\n\n# Title\n`), /<script>/i);
+  }
 });

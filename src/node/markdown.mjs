@@ -23,7 +23,7 @@ function titleExtractor(holder) {
   return () => (tree) => {
     visit(tree, "heading", (node, _index, parent) => {
       if (node.depth !== 1 || parent?.type !== "root") return;
-      const text = mdastToString(node).trim();
+      const text = mdastToString(node, { includeImageAlt: false }).trim();
       if (!text) return;
       holder.text = text;
       return EXIT;
