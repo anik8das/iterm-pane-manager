@@ -19,14 +19,16 @@
   },
   "scripts": {
     "audit": "npm audit --omit=dev",
-    "check": "node --check bin/pane.mjs && node --check bin/mdrender.mjs",
+    "check": "node --check bin/pane.mjs && node --check bin/mdrender.mjs && for f in src/node/*.mjs; do node --check \"$f\" || exit 1; done",
     "lint": "eslint .",
     "test": "node --test tests/node/*.test.mjs"
   },
   "dependencies": {
+    "mdast-util-to-string": "4.0.0",
     "mermaid": "11.17.2",
     "playwright": "1.62.1",
     "rehype-stringify": "10.0.1",
+    "remark-frontmatter": "5.0.0",
     "remark-gfm": "4.0.1",
     "remark-parse": "11.0.0",
     "remark-rehype": "11.1.2",
