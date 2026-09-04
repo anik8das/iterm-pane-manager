@@ -20,6 +20,22 @@ The design separates document delivery from automatic evening. The watcher has n
 
 `bin/pane.mjs` validates input, resolves files and URLs, serializes state changes, and invokes small Python helpers. It refuses to open a document without `ITERM_SESSION_ID`, because there is no safe target tab without the calling session's stable ID.
 
+### Ownership contract
+
+```mermaid
+flowchart TD
+    ENV["ITERM_SESSION_ID names a tab"] --> WALK["nearest ancestor with a terminal"]
+    WALK --> ASK["iTerm2 reports that tab's terminal"]
+    ASK --> SAME{"same terminal?"}
+    SAME -->|yes| OPEN["open, close, or even"]
+    SAME -->|no| STOP["refuse before rendering"]
+    OVER["PANE_ANCHOR set"] -.-> OPEN
+```
+
+Naming a tab is not being in it. The variable is inherited by every child, so a detached job keeps a valid address for a tab it left, and would otherwise split, close, or resize a tab nobody there asked it to touch. The caller's terminal is taken from the nearest ancestor that has one, because an agent runs its commands without a controlling terminal of their own; a detached caller reaches the init process without finding one and is refused. Both sides must be known, and the check runs before Markdown is rendered so a refusal leaves nothing behind. `PANE_ANCHOR` names a tab deliberately and skips the check, which is the way out for a multiplexer or a remote shell, where the terminal is genuinely not the tab's own.
+
+A sandbox that denies process information makes the caller unplaceable rather than detached. Refusing then would turn the guard on every caller inside one, including the agents that use this tool most, so an unanswerable question is not treated as a failed answer and the check is skipped. `pane --doctor` reports which of the two applies.
+
 ### Rendering boundary
 
 ```mermaid
@@ -111,6 +127,8 @@ Versioned releases are stored below `~/.local/share/iterm-pane-manager/releases`
 | iTerm2 API disabled | Command fails with the exact setting to enable; state is not advanced. |
 | State JSON invalid | Command fails loudly and preserves the file for recovery. |
 | Concurrent commands | The second command waits for the owned state lock, then reads fresh state. |
+| Caller detached from its tab | The command fails before rendering; `PANE_ANCHOR` overrides. |
+| Anchor tab already closed | The command fails naming the session, before rendering. |
 | Wrong-tab split | The new browser closes and the command fails. |
 | User navigates during split | The new browser closes; user focus is not restored or redirected. |
 | Layout cannot settle | The watcher records the unchanged signature and stops retrying until shape changes. |

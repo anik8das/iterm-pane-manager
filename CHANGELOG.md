@@ -11,7 +11,13 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
+### Added
+
+- `PANE_ANCHOR` names a target tab deliberately, for callers behind a multiplexer or a remote shell whose terminal is not the tab's own.
+
 ### Fixed
+
+- A process detached from its tab can no longer open, close, or even it. `ITERM_SESSION_ID` is inherited by every child, so a background job kept a valid address for the tab that started it and split that tab long after leaving it. The caller's terminal, taken from the nearest ancestor that has one, must now be the terminal iTerm2 reports for that tab, and the check runs before rendering. Where the process table cannot be read the caller is unplaceable rather than detached, and the check is skipped; `pane --doctor` says so.
 
 - Mermaid diagrams are no longer dropped. The placeholder was a raw HTML node, which `remark-rehype` discards along with all other raw HTML, so every diagram was silently lost after being rendered.
 - YAML frontmatter is parsed as frontmatter instead of rendering as a thematic break followed by a setext heading.
