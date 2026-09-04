@@ -29,6 +29,12 @@ export function snapshot(paths) {
   return JSON.parse(runPython(paths.python, paths.sessions, ["snapshot"]));
 }
 
+export function sessionStatus(paths, sessionId) {
+  return JSON.parse(
+    runPython(paths.python, paths.sessions, ["status", "--session", sessionId]),
+  );
+}
+
 export function closeSessions(paths, sessionIds) {
   const unique = [...new Set(sessionIds.filter(Boolean))];
   if (!unique.length) return;

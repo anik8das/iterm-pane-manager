@@ -45,6 +45,26 @@ The watcher log is stored at `~/.local/state/iterm-pane/watch.log`. It records l
 - Mermaid rendering requires the Chromium build installed by `scripts/install.sh`.
 - The opener deliberately fails if focus or target location changes while the split is running; run it again after navigation stops.
 
+### "this process is not in the tab named by ITERM_SESSION_ID"
+
+The address is right and the caller is not there. `ITERM_SESSION_ID` is
+inherited by every child, so a job that was detached from a tab keeps a valid
+address for it, and a shell inside a multiplexer or a remote session carries an
+address for a terminal it is not on.
+
+Where that is deliberate, name the tab and say so:
+
+```sh
+PANE_ANCHOR="$ITERM_SESSION_ID" pane report.md
+```
+
+Where it is not, the document belongs to a background job that has no tab.
+Render it without opening anything instead:
+
+```sh
+mdrender report.md --no-open
+```
+
 ## State file recovery
 
 Invalid JSON is never overwritten automatically. Preserve the broken file first:

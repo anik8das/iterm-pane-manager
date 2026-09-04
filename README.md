@@ -21,6 +21,7 @@ Keep iTerm2 split panes equal without changing normal focus behavior. The option
 - Hidden tabs, other windows, zoomed panes, and tmux layouts are not mutated.
 - The watcher never opens, closes, moves, or reloads a document.
 - A document opens in its calling session's tab without selecting that tab.
+- Only a process actually in that tab may open, close, or even it; `PANE_ANCHOR` overrides.
 - User tab and window changes always win if they race with a document open.
 - Reopening the same document replaces its tracked browser pane.
 

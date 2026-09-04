@@ -193,6 +193,99 @@ class DocumentTest(unittest.IsolatedAsyncioTestCase):
         ):
             self.assertNotIn(forbidden, source)
 
+    async def test_unselected_window_still_receives_its_document(self):
+        """A tab is addressed by identity, not by being on screen."""
+        far_anchor = Session("far-code")
+        far_tab = Tab("far-tab", [far_anchor])
+        far_window = Window("far-window", [far_tab])
+        app = App([self.window, far_window])
+        far_anchor.split_created = Session("far-browser")
+        before = document.identity(app)
+        result = await document.open_document(
+            app, far_anchor.session_id, "file:///doc.html", "doc"
+        )
+        self.assertEqual(result["target_tab"], far_tab.tab_id)
+        self.assertEqual(document.identity(app), before)
+        self.assertEqual(app.current_window, self.window)
+
+    async def test_background_application_still_receives_its_document(self):
+        """Work started in a tab must land there while another app is in front."""
+        self.app.app_active = False
+        before = document.identity(self.app)
+        result = await document.open_document(
+            self.app, self.anchor.session_id, "file:///doc.html", "doc"
+        )
+        self.assertEqual(result["target_tab"], self.hidden.tab_id)
+        self.assertEqual(document.identity(self.app), before)
+        self.assertFalse(self.app.app_active)
+
+    async def test_split_is_taken_from_the_anchor_not_the_selected_pane(self):
+        """The document lands beside the calling pane, and selection returns."""
+        sibling = Session("hidden-sibling")
+        sibling.app = self.app
+        sibling.tab = self.hidden
+        self.hidden.sessions.append(sibling)
+        self.hidden.all_sessions = self.hidden.sessions
+        self.hidden.current_session = sibling
+        await document.open_document(
+            self.app, self.anchor.session_id, "file:///doc.html", "doc"
+        )
+        self.assertIs(self.created.tab, self.hidden)
+        self.assertEqual(self.hidden.current_session, sibling)
+        self.assertEqual(sibling.activations, [(False, False)])
+        self.assertEqual(self.anchor.activations, [])
+
+    async def test_absent_anchor_creates_nothing(self):
+        with self.assertRaises(document.DocumentError):
+            await document.open_document(
+                self.app, "no-such-session", "file:///doc.html", "doc"
+            )
+        self.assertFalse(self.created.closed)
+        self.assertNotIn(self.created, self.hidden.sessions)
+        self.assertNotIn(self.created, self.visible.sessions)
+
+    async def test_tracked_browser_in_another_tab_is_refused(self):
+        stray = Session("browser-stray")
+        stray.app = self.app
+        stray.tab = self.visible
+        self.visible.sessions.append(stray)
+        self.visible.all_sessions = self.visible.sessions
+        with self.assertRaises(document.DocumentError):
+            await document.open_document(
+                self.app,
+                self.anchor.session_id,
+                "file:///doc.html",
+                "doc",
+                stray.session_id,
+            )
+        self.assertFalse(stray.closed)
+        self.assertNotIn(self.created, self.hidden.sessions)
+
+    async def test_tracked_browser_that_disappeared_is_refused(self):
+        with self.assertRaises(document.DocumentError):
+            await document.open_document(
+                self.app,
+                self.anchor.session_id,
+                "file:///doc.html",
+                "doc",
+                "browser-gone",
+            )
+        self.assertNotIn(self.created, self.hidden.sessions)
+
+    def test_the_opener_is_told_which_session_and_nothing_about_who_asked(self):
+        """Ownership is settled before this point, not here.
+
+        The command boundary refuses a caller that is not on the tab's own
+        terminal, and it does so before rendering, so the opener stays a
+        placement rule with one input. Widening this signature moves that
+        decision, and the new rule has to be stated here and in the
+        architecture guide.
+        """
+        params = list(inspect.signature(document.open_document).parameters)
+        self.assertEqual(
+            params, ["app", "anchor_id", "url", "profile_name", "existing_id"]
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

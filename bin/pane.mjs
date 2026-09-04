@@ -14,12 +14,15 @@ import {
   withStateLock,
   writeStateAtomic,
 } from "../src/node/state.mjs";
+import { ownsAnchor, parseAnchor } from "../src/node/anchor.mjs";
+import { callerTty } from "../src/node/caller.mjs";
 import { closeCandidates, resolveTarget } from "../src/node/target.mjs";
 import {
   closeSessions,
   evenPanes,
   liveSessionIds,
   openDocument,
+  sessionStatus,
   snapshot,
 } from "../src/node/runtime.mjs";
 
@@ -71,12 +74,44 @@ Automatic evening:
 
 Behavior:
   Documents open in the calling session's exact tab, including hidden tabs.
+  A process detached from that tab is refused; PANE_ANCHOR overrides.
   Opening the same document again replaces its tracked browser pane.
   The watcher resizes only the selected tab while iTerm2 is active.`);
 }
 
 function anchorSession() {
-  return (process.env.ITERM_SESSION_ID || "").split(":").pop() || "";
+  // On the parsed value, not the raw one: `PANE_ANCHOR=w0t1p2:` is truthy and
+  // names nothing, and must not shadow a variable that does.
+  return parseAnchor(process.env.PANE_ANCHOR) || parseAnchor(process.env.ITERM_SESSION_ID);
+}
+
+/**
+ * Refuse to act on a tab this process is not in.
+ *
+ * `ITERM_SESSION_ID` is inherited, so a detached background job keeps a valid
+ * address for the tab that started it long after leaving it, and would
+ * otherwise split, close, or resize a tab nobody there asked it to touch.
+ * Setting `PANE_ANCHOR` names a tab deliberately and skips this, which is the
+ * way out for a caller behind a multiplexer or a remote shell.
+ */
+function requireOwnership(anchor) {
+  if (!anchor) return;
+  // Asked before either way out below, so a tab that has closed is refused
+  // here rather than after a document has been rendered for it. Naming a tab
+  // deliberately says which tab, not that it still exists.
+  const status = sessionStatus(PATHS, anchor);
+  if (!status.exists) fail(`no iTerm2 session ${anchor}; its tab has closed`);
+  if (parseAnchor(process.env.PANE_ANCHOR)) return;
+  const caller = callerTty();
+  // A sandbox that denies process information leaves the call unplaceable.
+  // Refusing then would break every caller inside one, so an unanswerable
+  // question is not treated as a failed answer. `--doctor` reports it.
+  if (caller === null) return;
+  if (ownsAnchor(caller, status.tty)) return;
+  fail(
+    "this process is not in the tab named by ITERM_SESSION_ID, so it inherited " +
+      "that address rather than earning it. Set PANE_ANCHOR to open there anyway.",
+  );
 }
 
 function launchctl(...args) {
@@ -234,6 +269,7 @@ function openTarget(target, raw) {
   if (!anchor) {
     fail("ITERM_SESSION_ID is missing; run pane from the iTerm2 tab that should receive the document");
   }
+  requireOwnership(anchor);
   const url = resolveTarget(target, { raw, renderer: RENDERER });
   const key = keyFor(anchor, url);
   let result;
@@ -276,6 +312,7 @@ function openTarget(target, raw) {
 function closeTarget(target) {
   const anchor = anchorSession();
   if (!anchor) fail("ITERM_SESSION_ID is missing");
+  requireOwnership(anchor);
   const keys = closeCandidates(target).map((url) => keyFor(anchor, url));
   let closedUrl;
   withStateLock(STATE_PATH, () => {
@@ -292,6 +329,7 @@ function closeTarget(target) {
 }
 
 function closeAll(anchor, all) {
+  requireOwnership(anchor);
   let count = 0;
   withStateLock(STATE_PATH, () => {
     const { state } = readState(STATE_PATH);
@@ -316,6 +354,14 @@ function runDoctor() {
   checks.push(["Python environment", fs.existsSync(PYTHON), PYTHON]);
   checks.push(["watcher source", fs.existsSync(PATHS.watch), PATHS.watch]);
   checks.push(["renderer", fs.existsSync(RENDERER), RENDERER]);
+  const placement = callerTty();
+  checks.push([
+    "caller placement",
+    true,
+    placement === null
+      ? "unavailable: the process table cannot be read, so the tab-ownership check is skipped"
+      : placement || "no terminal above this process",
+  ]);
   const watcher = launchctl("print", `${DOMAIN}/${LABEL}`);
   checks.push(["background watcher", watcher.ok, watcher.ok ? "loaded" : "not loaded"]);
   try {
@@ -379,6 +425,7 @@ function main(args) {
   }
   if (operation === "--even") {
     allowOnly(args, new Set(["--even", "--all"]));
+    requireOwnership(anchor);
     const output = evenPanes(PATHS, anchor, { all, loud: true });
     if (output) console.log(output);
     return 0;

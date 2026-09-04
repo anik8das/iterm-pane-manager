@@ -8,6 +8,19 @@ import sys
 import iterm2
 
 
+async def session_tty(session):
+    """The terminal device this session is running, or None for a browser pane.
+
+    Ownership of a tab is decided against this value, so an unreadable
+    variable has to read as "unknown" rather than raise: the caller is then
+    refused, which is the safe direction.
+    """
+    try:
+        return await session.async_get_variable("tty")
+    except Exception:
+        return None
+
+
 def walk(app):
     """Yield every session, including panes hidden by zoom."""
     for window in app.windows:
@@ -69,6 +82,12 @@ async def main(connection, args):
         if session.session_id == args.session
     ]
     if not matches:
+        if args.command == "status":
+            # A session that is gone is an answer rather than a failure. The
+            # caller is asking whether it may address this tab, and "there is
+            # no such tab" is exactly what it needs to hear.
+            print(json.dumps({"exists": False, "tty": None}))
+            return 0
         print(f"sessions: no session {args.session}", file=sys.stderr)
         return 4
     window, tab, session = matches[0]
@@ -93,6 +112,7 @@ async def main(connection, args):
             json.dumps(
                 {
                     "exists": True,
+                    "tty": await session_tty(session),
                     "app_active": bool(app.app_active),
                     "active": active,
                     "window_id": window.window_id,
