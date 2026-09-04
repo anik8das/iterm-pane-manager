@@ -10,14 +10,18 @@ const cli = path.join(root, "bin/pane.mjs");
 
 // No test may reach iTerm2 or the real state file. Pointing the helper at a
 // Python that cannot exist stops every command that would, on any machine,
-// before it closes a pane or resizes a tab someone is using.
+// before it closes a pane or resizes a tab someone is using. The state path
+// comes from the home directory, and a command that names no tab still takes
+// the lock and rewrites the file, so each child gets a home of its own.
 const NO_PYTHON = path.join(root, "tests/node/no-such-python");
 
 function run(args, session = "", extra = {}) {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "iterm-pane-home-"));
   return spawnSync(process.execPath, [cli, ...args], {
     encoding: "utf8",
     env: {
       ...process.env,
+      HOME: home,
       ITERM_SESSION_ID: session,
       PANE_ANCHOR: "",
       ITERM_PANE_PYTHON: NO_PYTHON,
@@ -79,6 +83,16 @@ test("a command with no tab to address does not pay for an ownership check", () 
   const result = run(["--close-all"]);
   assert.doesNotMatch(result.stderr, /no iTerm2 session/);
   assert.doesNotMatch(result.stderr, /not in the tab named by/);
+});
+
+test("a tab that has closed is refused before either way out of the check", () => {
+  // Naming a tab deliberately, or being unable to place the caller, says
+  // nothing about whether the tab is still there. Both returns come after.
+  const source = fs.readFileSync(cli, "utf8");
+  const body = source.slice(source.indexOf("function requireOwnership"));
+  const guard = body.indexOf("status.exists");
+  assert.ok(guard > 0 && guard < body.indexOf("process.env.PANE_ANCHOR"));
+  assert.ok(guard < body.indexOf("callerTty()"));
 });
 
 test("ownership is settled before any Markdown is rendered", () => {

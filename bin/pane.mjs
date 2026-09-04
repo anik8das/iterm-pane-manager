@@ -96,14 +96,17 @@ function anchorSession() {
  */
 function requireOwnership(anchor) {
   if (!anchor) return;
+  // Asked before either way out below, so a tab that has closed is refused
+  // here rather than after a document has been rendered for it. Naming a tab
+  // deliberately says which tab, not that it still exists.
+  const status = sessionStatus(PATHS, anchor);
+  if (!status.exists) fail(`no iTerm2 session ${anchor}; its tab has closed`);
   if (parseAnchor(process.env.PANE_ANCHOR)) return;
   const caller = callerTty();
   // A sandbox that denies process information leaves the call unplaceable.
   // Refusing then would break every caller inside one, so an unanswerable
   // question is not treated as a failed answer. `--doctor` reports it.
   if (caller === null) return;
-  const status = sessionStatus(PATHS, anchor);
-  if (!status.exists) fail(`no iTerm2 session ${anchor}; its tab has closed`);
   if (ownsAnchor(caller, status.tty)) return;
   fail(
     "this process is not in the tab named by ITERM_SESSION_ID, so it inherited " +
