@@ -14,9 +14,14 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 ### Added
 
 - `PANE_ANCHOR` names a target tab deliberately, for callers behind a multiplexer or a remote shell whose terminal is not the tab's own.
+- A browser-independent renderer converts flow, sequence, state, class, entity-relationship, and XY diagrams directly to inline SVG.
+- `pane --doctor` now proves all three required documentation diagram forms with real Mermaid-to-SVG conversions.
 
 ### Fixed
 
+- Side-pane Markdown no longer depends on a temporary Chromium process that can crash or hang before the pane opens.
+- iTerm browser creation now has a 30-second deadline. Under WebKit process pressure it was measured at 16.25 seconds, so the former 10-second helper deadline killed a healthy operation after the pane was created and left it untracked.
+- The doctor now reports the 400-process WebKit limit that makes macOS reject new iTerm browser processes.
 - A process detached from its tab can no longer open, close, or even it. `ITERM_SESSION_ID` is inherited by every child, so a background job kept a valid address for the tab that started it and split that tab long after leaving it. The caller's terminal, taken from the nearest ancestor that has one, must now be the terminal iTerm2 reports for that tab, and the check runs before rendering. Where the process table cannot be read the caller is unplaceable rather than detached, and the check is skipped; `pane --doctor` says so.
 
 - Mermaid diagrams are no longer dropped. The placeholder was a raw HTML node, which `remark-rehype` discards along with all other raw HTML, so every diagram was silently lost after being rendered.

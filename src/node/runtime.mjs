@@ -53,7 +53,10 @@ export function openDocument(paths, entry) {
     entry.profile,
   ];
   if (entry.session) args.push("--existing", entry.session);
-  const result = JSON.parse(runPython(paths.python, paths.document, args));
+  // Creating an iTerm browser can exceed the general helper deadline when
+  // WebKit is retiring another content process. Keep the limit finite, but
+  // allow the browser operation to finish and report its own rollback.
+  const result = JSON.parse(runPython(paths.python, paths.document, args, 30_000));
   if (!result.focus_unchanged || !result.session) {
     throw new RuntimeError("document split did not preserve its focus contract");
   }

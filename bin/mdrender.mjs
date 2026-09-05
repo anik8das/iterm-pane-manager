@@ -3,11 +3,8 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { createRequire } from "node:module";
-import { chromium } from "playwright";
+import { renderDiagrams } from "../src/node/diagram.mjs";
 import { fillDiagrams, markdownToBody } from "../src/node/markdown.mjs";
-
-const require = createRequire(import.meta.url);
 
 function escapeHtml(value) {
   return value
@@ -41,51 +38,6 @@ function writeAtomic(output, content) {
       );
     }
     throw error;
-  }
-}
-
-async function renderDiagrams(charts) {
-  if (!charts.length) return [];
-  let browser;
-  try {
-    browser = await chromium.launch();
-    const page = await browser.newPage();
-    await page.setContent("<!doctype html><body></body>");
-    await page.addScriptTag({ path: require.resolve("mermaid/dist/mermaid.min.js") });
-    await page.evaluate(() => {
-      globalThis.mermaid.initialize({
-        startOnLoad: false,
-        theme: "default",
-        securityLevel: "strict",
-        htmlLabels: false,
-        flowchart: { useMaxWidth: false, htmlLabels: false },
-        sequence: { useMaxWidth: false, htmlLabels: false },
-        state: { useMaxWidth: false },
-      });
-    });
-    const results = [];
-    for (let index = 0; index < charts.length; index += 1) {
-      const result = await page.evaluate(
-        async ([source, id]) => {
-          try {
-            const { svg } = await globalThis.mermaid.render(`diagram-${id}`, source);
-            return { svg };
-          } catch (error) {
-            return { error: (error.message || String(error)).split("\n")[0] };
-          }
-        },
-        [charts[index], index],
-      );
-      results.push(result);
-    }
-    return results;
-  } catch (error) {
-    throw new Error(
-      `cannot render Mermaid diagrams: ${error.message}. Run "npx playwright install chromium" in the installation directory.`,
-      { cause: error },
-    );
-  } finally {
-    if (browser) await browser.close();
   }
 }
 

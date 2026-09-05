@@ -4,6 +4,7 @@
 flowchart TD
     CLI["Node command boundary"] --> STATE["Atomic state store"]
     CLI --> DOC["One-shot document helper"]
+    CLI --> RENDER["Browser-free diagram engine"]
     CLI --> EVEN["One-shot evening helper"]
     WATCH["Single launchd watcher"] --> LAYOUT["Pure layout rules"]
     EVEN --> LAYOUT
@@ -43,12 +44,14 @@ flowchart LR
     MD["src/node/markdown.mjs"] --> BODY["HTML body + charts + title"]
     BODY --> FILL["fillDiagrams"]
     CLI2["bin/mdrender.mjs"] --> MD
-    CLI2 --> PW["Chromium renders each chart"]
-    PW --> FILL
+    CLI2 --> SVG["Node engine renders each chart"]
+    SVG --> FILL
     FILL --> PAGE["Self-contained page"]
 ```
 
-`src/node/markdown.mjs` owns Markdown to HTML and needs no browser, so the pipeline is testable without Chromium. It emits one placeholder per Mermaid block and `fillDiagrams` substitutes the rendered SVG.
+`src/node/markdown.mjs` owns Markdown to HTML and needs no browser. It emits one placeholder per Mermaid block and `fillDiagrams` substitutes the SVG produced by `src/node/diagram.mjs`. Flow, sequence, state, class, entity-relationship, and XY diagrams render directly in Node, so a document command never starts a browser process.
+
+The renderer escapes diagram labels and strips its optional remote-font import. Each finished page therefore contains its diagrams inline and needs no network request to display them.
 
 Raw HTML in a source document is discarded. The diagram placeholder therefore carries an explicit `hName`/`hProperties` shape rather than being a raw HTML node, which keeps untrusted markup out of the page without losing the placeholder. YAML and TOML frontmatter are parsed so they are dropped rather than rendered. As in every frontmatter-aware renderer, an opening `---` is a fence rather than a thematic break, so a document that starts with a rule loses its first block; a rule anywhere else is untouched. The title comes from the first non-empty level-1 heading at the top level of the tree, ignoring headings quoted inside blockquotes or list items, and falls back to the file name.
 
@@ -116,7 +119,7 @@ Terminal grids round to whole character cells, so a 12-point tolerance prevents 
 
 ## Process lifecycle
 
-The installer creates one per-user LaunchAgent named `io.github.anik8das.iterm-pane-manager`. launchd owns restart policy; the watcher owns one iTerm2 connection lifecycle and exits on disconnect. There is no internal reconnect loop.
+The installer creates one per-user LaunchAgent named `io.github.anik8das.iterm-pane-manager`. **LaunchAgent** means a macOS background process owned by the signed-in user. macOS owns restart policy; the watcher owns one iTerm2 connection lifecycle and exits on disconnect. There is no internal reconnect loop.
 
 Versioned releases are stored below `~/.local/share/iterm-pane-manager/releases`. The `current` symlink is changed only after dependencies and tests pass. Watcher startup and `pane --doctor` are the final promotion gates.
 
@@ -131,6 +134,9 @@ Versioned releases are stored below `~/.local/share/iterm-pane-manager/releases`
 | Anchor tab already closed | The command fails naming the session, before rendering. |
 | Wrong-tab split | The new browser closes and the command fails. |
 | User navigates during split | The new browser closes; user focus is not restored or redirected. |
+| WebKit is retiring a content process | Document opening has a separate 30-second deadline instead of the 10-second helper deadline. |
+| WebKit reaches its 400-process limit | The doctor fails with the measured count before a false all-clear. |
 | Layout cannot settle | The watcher records the unchanged signature and stops retrying until shape changes. |
 | Repeated external resizing | The burst guard pauses mutation for 60 seconds. |
+| Unsupported diagram | That diagram becomes a visible error; the rest of the page renders. |
 | Failed update | The installer restores the previous runtime symlink and watcher. |

@@ -5,21 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { chromium } from "playwright";
-
 const root = path.resolve(import.meta.dirname, "../..");
 const renderer = path.join(root, "bin/mdrender.mjs");
-
-// install.sh runs `playwright install chromium` before `npm test`, so the
-// diagram case runs there. CI installs with --ignore-scripts and has no
-// browser, so it is skipped rather than failed.
-const chromiumMissing = (() => {
-  try {
-    return !fs.existsSync(chromium.executablePath());
-  } catch {
-    return true;
-  }
-})();
 
 function render(t, markdown, name = "document.md") {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "iterm-pane-render-"));
@@ -55,10 +42,16 @@ test("an uppercase .MD extension is stripped from the fallback title", (t) => {
   assert.match(html, /<title>NOTES<\/title>/);
 });
 
-test("a Mermaid diagram reaches the page as inline SVG", { skip: chromiumMissing }, (t) => {
+test("a Mermaid diagram reaches the page as inline SVG", (t) => {
   const html = render(t, "# Chart\n\n```mermaid\nflowchart LR\n  A --> B\n```\n");
   assert.match(html, /<figure class="diagram">/);
   assert.match(html, /<svg/);
   assert.doesNotMatch(html, /diagram error/);
   assert.doesNotMatch(html, /data-index/);
+});
+
+test("a malformed Mermaid block becomes a visible error", (t) => {
+  const html = render(t, "# Chart\n\n```mermaid\nnot a diagram\n```\n");
+  assert.match(html, /<div class="diagram error">/);
+  assert.match(html, /Invalid mermaid header/);
 });
