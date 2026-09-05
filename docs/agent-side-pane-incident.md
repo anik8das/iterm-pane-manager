@@ -61,6 +61,7 @@ sequenceDiagram
 - A malformed diagram becomes a visible error inside the document instead of discarding the whole page.
 - `pane --doctor` now renders flow, sequence, and state diagrams and requires inline SVG from all three.
 - Document creation has a separate 30-second deadline, while fast read-only helpers keep the existing 10-second bound.
+- A private creation receipt records the new pane immediately. If the document helper reaches its deadline before returning, the caller closes that exact pane instead of leaving it untracked.
 - The doctor now fails clearly when the WebKit count reaches the proven 400-process limit.
 - Removed the temporary sandbox exception because the command no longer launches a browser.
 
@@ -71,6 +72,7 @@ sequenceDiagram
 | Unsupported diagram kind | That diagram shows a visible error; the rest of the document renders. |
 | Malformed diagram | That diagram shows the renderer's first error line. |
 | WebKit reaches 400 content processes | The doctor names the process count and reports that macOS is rejecting new browser processes. |
+| Document helper is terminated after a split | The caller reads the private creation receipt and closes the exact new pane. |
 | Caller has no visible terminal | The ownership guard refuses it before rendering. |
 | User changes tabs during the split | The created pane is rolled back and focus is left alone. |
 | Invalid state file | The file is preserved and the command fails loudly. |

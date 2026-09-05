@@ -1,5 +1,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 export class RuntimeError extends Error {}
 
@@ -43,7 +45,9 @@ export function closeSessions(paths, sessionIds) {
   runPython(paths.python, paths.sessions, args);
 }
 
-export function openDocument(paths, entry) {
+export function openDocument(paths, entry, options = {}) {
+  const receiptDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "iterm-pane-open-"));
+  const receipt = path.join(receiptDirectory, "created-session");
   const args = [
     "--anchor",
     entry.anchor,
@@ -51,16 +55,38 @@ export function openDocument(paths, entry) {
     entry.url,
     "--profile",
     entry.profile,
+    "--receipt",
+    receipt,
   ];
   if (entry.session) args.push("--existing", entry.session);
-  // Creating an iTerm browser can exceed the general helper deadline when
-  // WebKit is retiring another content process. Keep the limit finite, but
-  // allow the browser operation to finish and report its own rollback.
-  const result = JSON.parse(runPython(paths.python, paths.document, args, 30_000));
-  if (!result.focus_unchanged || !result.session) {
-    throw new RuntimeError("document split did not preserve its focus contract");
+  try {
+    // Creating an iTerm browser can exceed the general helper deadline when
+    // WebKit is retiring another content process. Keep the limit finite, but
+    // allow the browser operation to finish and report its own rollback.
+    const result = JSON.parse(
+      runPython(paths.python, paths.document, args, options.timeoutMs ?? 30_000),
+    );
+    if (!result.focus_unchanged || !result.session) {
+      throw new RuntimeError("document split did not preserve its focus contract");
+    }
+    return result;
+  } catch (error) {
+    let cleanupError;
+    try {
+      const created = fs.existsSync(receipt) ? fs.readFileSync(receipt, "utf8").trim() : "";
+      if (created) closeSessions(paths, [created]);
+    } catch (caught) {
+      cleanupError = caught;
+    }
+    if (cleanupError) {
+      throw new RuntimeError(
+        `${error.message}; pane cleanup also failed: ${cleanupError.message}`,
+      );
+    }
+    throw error;
+  } finally {
+    fs.rmSync(receiptDirectory, { recursive: true, force: true });
   }
-  return result;
 }
 
 export function evenPanes(paths, anchor, options = {}) {

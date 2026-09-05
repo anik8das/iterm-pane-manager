@@ -2,7 +2,9 @@
 """Open a browser document beside an exact iTerm2 anchor session."""
 
 import argparse
+import contextlib
 import json
+import os
 import sys
 import time
 
@@ -63,13 +65,29 @@ async def close_created(created):
         await created.async_close(force=True)
 
 
+def record_created(receipt_path, session_id):
+    """Publish a new pane ID so the caller can clean up after termination."""
+    if receipt_path is None:
+        return
+    temporary = f"{receipt_path}.{os.getpid()}.tmp"
+    try:
+        with open(temporary, "w", encoding="utf-8") as receipt:
+            receipt.write(session_id)
+        os.replace(temporary, receipt_path)
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(temporary)
+
+
 def same_global_context(first, second):
     """Return whether app activity, window, and tab stayed unchanged."""
     keys = ("app_active", "window_id", "tab_id")
     return all(first[key] == second[key] for key in keys)
 
 
-async def open_document(app, anchor_id, url, profile_name, existing_id=None):
+async def open_document(
+    app, anchor_id, url, profile_name, existing_id=None, receipt_path=None
+):
     """Open or replace one document while preserving location and focus."""
     started = time.monotonic()
     before = identity(app)
@@ -122,6 +140,7 @@ async def open_document(app, anchor_id, url, profile_name, existing_id=None):
             before=False,
             profile_customizations=browser_profile(profile_name, url),
         )
+        record_created(receipt_path, created.session_id)
 
         # A tab/window switch during the call belongs to the user. Do not
         # counteract it. The location/focus checks below will reject the open.
@@ -180,7 +199,7 @@ async def main(connection, args):
     app = await iterm2.async_get_app(connection)
     try:
         result = await open_document(
-            app, args.anchor, args.url, args.profile, args.existing
+            app, args.anchor, args.url, args.profile, args.existing, args.receipt
         )
     except Exception as error:
         print(f"document: {error}", file=sys.stderr)
@@ -197,6 +216,7 @@ def parse_args(argv=None):
     parser.add_argument("--url", required=True)
     parser.add_argument("--profile", required=True)
     parser.add_argument("--existing")
+    parser.add_argument("--receipt")
     return parser.parse_args(argv)
 
 
