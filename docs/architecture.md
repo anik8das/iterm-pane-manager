@@ -135,7 +135,7 @@ Versioned releases are stored below `~/.local/share/iterm-pane-manager/releases`
 | Wrong-tab split | The new browser closes and the command fails. |
 | User navigates during split | The new browser closes; user focus is not restored or redirected. |
 | WebKit is retiring a content process | Document opening has a separate 30-second deadline instead of the 10-second helper deadline. |
-| Document helper reaches its deadline after creating a pane | A private creation receipt lets the caller close the exact untracked pane. |
+| Document helper reaches its deadline after creating a pane | A private receipt identifies it; the pre-split session list and unique profile recover it if termination precedes the receipt. |
 | WebKit reaches its 400-process limit | The doctor fails with the measured count before a false all-clear. |
 | Layout cannot settle | The watcher records the unchanged signature and stops retrying until shape changes. |
 | Repeated external resizing | The burst guard pauses mutation for 60 seconds. |

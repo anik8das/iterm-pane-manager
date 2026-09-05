@@ -1,6 +1,7 @@
 import contextlib
 import io
 import json
+import types
 import unittest
 from unittest import mock
 
@@ -8,15 +9,19 @@ import sessions
 
 
 class Session:
-    def __init__(self, session_id, tty="/dev/ttys012"):
+    def __init__(self, session_id, tty="/dev/ttys012", profile_name="Default"):
         self.session_id = session_id
         self.tty = tty
+        self.profile_name = profile_name
         self.raises = False
 
     async def async_get_variable(self, name):
         if self.raises:
             raise RuntimeError("variable unavailable")
         return self.tty if name == "tty" else None
+
+    async def async_get_profile(self):
+        return types.SimpleNamespace(name=self.profile_name)
 
 
 class Tab:
@@ -94,6 +99,28 @@ class SessionsTest(unittest.IsolatedAsyncioTestCase):
         self.session.raises = True
         _code, payload = await self.status("code-pane")
         self.assertIsNone(payload["tty"])
+
+    async def test_recovery_finds_only_new_matching_panes_in_the_anchor_tab(self):
+        prior = Session("prior-browser", profile_name="pane document marker")
+        created = Session("created-browser", profile_name="pane document marker")
+        unrelated = Session("manual-pane", profile_name="Default")
+        other_tab_match = Session(
+            "other-tab-browser", profile_name="pane document marker"
+        )
+        anchor_tab = Tab("tab", [self.session, prior, created, unrelated])
+        other_tab = Tab("other-tab", [other_tab_match])
+        self.app.windows[0].tabs = [anchor_tab, other_tab]
+        args = types.SimpleNamespace(
+            command="recover",
+            anchor=self.session.session_id,
+            profile="pane document marker",
+            before=[self.session.session_id, prior.session_id],
+        )
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = await sessions.main(object(), args)
+        self.assertEqual(code, 0)
+        self.assertEqual(buffer.getvalue().splitlines(), [created.session_id])
 
 
 if __name__ == "__main__":

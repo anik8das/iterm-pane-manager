@@ -302,7 +302,7 @@ function openTarget(target, raw) {
       session: previous?.session ?? null,
     };
     try {
-      result = openDocument(PATHS, entry);
+      result = openDocument(PATHS, entry, { beforeSessionIds: live });
       state.documents[key] = { ...entry, session: result.session };
       writeStateAtomic(STATE_PATH, state);
     } catch (error) {

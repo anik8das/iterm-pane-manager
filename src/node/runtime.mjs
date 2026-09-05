@@ -45,7 +45,16 @@ export function closeSessions(paths, sessionIds) {
   runPython(paths.python, paths.sessions, args);
 }
 
+function recoverDocumentSessions(paths, entry, beforeSessionIds) {
+  const args = ["recover", "--anchor", entry.anchor, "--profile", entry.profile];
+  for (const sessionId of beforeSessionIds) args.push("--before", sessionId);
+  return runPython(paths.python, paths.sessions, args)
+    .split("\n")
+    .filter(Boolean);
+}
+
 export function openDocument(paths, entry, options = {}) {
+  const beforeSessionIds = options.beforeSessionIds ?? liveSessionIds(paths);
   const receiptDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "iterm-pane-open-"));
   const receipt = path.join(receiptDirectory, "created-session");
   const args = [
@@ -73,8 +82,13 @@ export function openDocument(paths, entry, options = {}) {
   } catch (error) {
     let cleanupError;
     try {
-      const created = fs.existsSync(receipt) ? fs.readFileSync(receipt, "utf8").trim() : "";
-      if (created) closeSessions(paths, [created]);
+      const receiptSession = fs.existsSync(receipt)
+        ? fs.readFileSync(receipt, "utf8").trim()
+        : "";
+      const created = receiptSession
+        ? [receiptSession]
+        : recoverDocumentSessions(paths, entry, beforeSessionIds);
+      closeSessions(paths, created);
     } catch (caught) {
       cleanupError = caught;
     }
