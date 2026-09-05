@@ -42,6 +42,8 @@ cd iterm-pane-manager
 
 The installer stages and tests a versioned release before switching the live installation. It installs commands in `/usr/local/bin` when that directory is writable, otherwise in `~/.local/bin`.
 
+It starts one per-user macOS background job for focus-safe pane watching. Mermaid diagrams are converted directly to inline SVG without starting or downloading a browser.
+
 ## Use
 
 ```text

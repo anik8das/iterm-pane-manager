@@ -1,4 +1,6 @@
 import inspect
+import pathlib
+import tempfile
 import unittest
 from unittest import mock
 
@@ -127,6 +129,20 @@ class DocumentTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(document.identity(self.app), before)
         self.assertEqual(self.hidden.current_session, self.anchor)
         self.assertEqual(self.anchor.activations, [(False, False)])
+
+    async def test_new_pane_id_is_published_for_external_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = pathlib.Path(directory) / "created-session"
+            await document.open_document(
+                self.app,
+                self.anchor.session_id,
+                "file:///doc.html",
+                "doc",
+                receipt_path=receipt,
+            )
+            self.assertEqual(
+                receipt.read_text(encoding="utf-8"), self.created.session_id
+            )
 
     async def test_replacement_reuses_existing_layout_slot(self):
         old = Session("browser-old")
@@ -283,7 +299,15 @@ class DocumentTest(unittest.IsolatedAsyncioTestCase):
         """
         params = list(inspect.signature(document.open_document).parameters)
         self.assertEqual(
-            params, ["app", "anchor_id", "url", "profile_name", "existing_id"]
+            params,
+            [
+                "app",
+                "anchor_id",
+                "url",
+                "profile_name",
+                "existing_id",
+                "receipt_path",
+            ],
         )
 
 

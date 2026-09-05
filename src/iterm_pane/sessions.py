@@ -76,6 +76,26 @@ async def main(connection, args):
                 await session.async_close(force=True)
         return 0
 
+    if args.command == "recover":
+        before = set(args.before)
+        anchor_tab = next(
+            (
+                tab
+                for _window, tab, session in walk(app)
+                if session.session_id == args.anchor
+            ),
+            None,
+        )
+        for _window, tab, session in walk(app):
+            if session.session_id in before:
+                continue
+            if anchor_tab is not None and tab.tab_id != anchor_tab.tab_id:
+                continue
+            profile = await session.async_get_profile()
+            if profile.name == args.profile:
+                print(session.session_id)
+        return 0
+
     matches = [
         (window, tab, session)
         for window, tab, session in walk(app)
@@ -140,6 +160,10 @@ def parse_args(argv=None):
         subcommand.add_argument("--session", required=True)
     close = commands.add_parser("close")
     close.add_argument("--session", required=True, action="append")
+    recover = commands.add_parser("recover")
+    recover.add_argument("--anchor", required=True)
+    recover.add_argument("--profile", required=True)
+    recover.add_argument("--before", action="append", default=[])
     return parser.parse_args(argv)
 
 

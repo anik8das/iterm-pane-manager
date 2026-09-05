@@ -42,7 +42,8 @@ The watcher log is stored at `~/.local/state/iterm-pane/watch.log`. It records l
 - Confirm the file exists and `ITERM_SESSION_ID` is present: `test -n "$ITERM_SESSION_ID"`.
 - Run `pane --list` to inspect tracking state.
 - A tracked pane can still be closed by its old path after the source file is deleted.
-- Mermaid rendering requires the Chromium build installed by `scripts/install.sh`.
+- `pane --doctor` renders all three required diagram forms, so its Mermaid line tests the real path.
+- If iTerm repeatedly takes 30 seconds to create a browser pane, inspect the macOS log for `ExceededProcessCountLimit`; restarting browser-heavy apps or signing out clears stale WebKit content processes.
 - The opener deliberately fails if focus or target location changes while the split is running; run it again after navigation stops.
 
 ### "this process is not in the tab named by ITERM_SESSION_ID"

@@ -16,6 +16,7 @@ import {
 } from "../src/node/state.mjs";
 import { ownsAnchor, parseAnchor } from "../src/node/anchor.mjs";
 import { callerTty } from "../src/node/caller.mjs";
+import { renderDiagrams } from "../src/node/diagram.mjs";
 import { closeCandidates, resolveTarget } from "../src/node/target.mjs";
 import {
   closeSessions,
@@ -128,6 +129,19 @@ function launchctl(...args) {
       ok: false,
       output: `${String(error.stdout || "")}${String(error.stderr || "")}`,
     };
+  }
+}
+
+function processCount(name) {
+  try {
+    const output = execFileSync("pgrep", ["-x", name], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    return output ? output.split("\n").length : 0;
+  } catch (error) {
+    if (error.status === 1) return 0;
+    return null;
   }
 }
 
@@ -288,7 +302,7 @@ function openTarget(target, raw) {
       session: previous?.session ?? null,
     };
     try {
-      result = openDocument(PATHS, entry);
+      result = openDocument(PATHS, entry, { beforeSessionIds: live });
       state.documents[key] = { ...entry, session: result.session };
       writeStateAtomic(STATE_PATH, state);
     } catch (error) {
@@ -364,6 +378,35 @@ function runDoctor() {
   ]);
   const watcher = launchctl("print", `${DOMAIN}/${LABEL}`);
   checks.push(["background watcher", watcher.ok, watcher.ok ? "loaded" : "not loaded"]);
+  const webContent = processCount("com.apple.WebKit.WebContent");
+  checks.push([
+    "iTerm browser capacity",
+    webContent !== null && webContent < 400,
+    webContent === null
+      ? "process count unavailable"
+      : `${webContent} WebKit content processes${
+          webContent >= 400 ? "; macOS is rejecting new browser processes" : ""
+        }`,
+  ]);
+  try {
+    const results = renderDiagrams([
+      "flowchart LR\n  A --> B",
+      "sequenceDiagram\n  A->>B: check",
+      "stateDiagram-v2\n  [*] --> Ready",
+    ]);
+    const rendered = results.every(
+      (result) => typeof result.svg === "string" && /<svg[\s>]/.test(result.svg),
+    );
+    checks.push([
+      "Mermaid round trip",
+      rendered,
+      rendered
+        ? "flow, sequence, and state diagrams returned inline SVG"
+        : "a required diagram type returned no SVG",
+    ]);
+  } catch (error) {
+    checks.push(["Mermaid round trip", false, error.message]);
+  }
   try {
     const current = snapshot(PATHS);
     checks.push(["iTerm2 Python API", true, `${Object.keys(current.sessions).length} sessions`]);

@@ -12,4 +12,4 @@ Please report vulnerabilities through [GitHub private vulnerability reporting](h
 
 The project supports the latest release on `main`. Security fixes include a regression test when practical. Dependency advisories block releases.
 
-The tool controls iTerm2 sessions and renders local Markdown. Install only from this repository, review changes before updating, and do not run documents from untrusted sources.
+The tool controls iTerm2 sessions and renders local Markdown. Diagram labels are escaped before their SVG is placed in the page, and generated pages load no remote diagram assets. Install only from this repository, review changes before updating, and do not run documents from untrusted sources.

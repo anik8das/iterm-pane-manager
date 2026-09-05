@@ -103,7 +103,6 @@ python3 -m venv "$stage/venv"
 "$stage/venv/bin/python3" -m pip install --disable-pip-version-check \
   --requirement "$stage/requirements.lock"
 npm --prefix "$stage" ci --omit=dev --ignore-scripts
-"$stage/node_modules/.bin/playwright" install chromium
 
 say "Verifying staged release"
 npm --prefix "$stage" run check
