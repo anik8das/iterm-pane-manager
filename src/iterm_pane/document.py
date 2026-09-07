@@ -145,15 +145,22 @@ async def open_document(
         # A tab/window switch during the call belongs to the user. Do not
         # counteract it. The location/focus checks below will reject the open.
         after_split = identity(app)
-        if same_global_context(before, after_split):
-            replacing_selected = existing_closed and selected_id == existing_id
-            restore_id = (
-                created.session_id
-                if replacing_selected and before["tab_id"] == target_tab.tab_id
-                else anchor_id
-                if replacing_selected
-                else selected_id
-            )
+        replacing_selected = existing_closed and selected_id == existing_id
+        restore_id = (
+            created.session_id
+            if replacing_selected and before["tab_id"] == target_tab.tab_id
+            else anchor_id
+            if replacing_selected
+            else selected_id
+        )
+        # Choosing the pane selected inside the target tab never selects that
+        # tab or its window, so it is still right when the person moved while
+        # the split ran. The exception is them moving *to* this tab, where
+        # changing the selected pane would move a cursor they are watching.
+        if (
+            same_global_context(before, after_split)
+            or after_split["tab_id"] != target_tab.tab_id
+        ):
             await restore_target_selection(app, restore_id)
 
         if before["tab_id"] == target_tab.tab_id:
@@ -169,19 +176,23 @@ async def open_document(
 
         after = identity(app)
         expected = dict(before)
-        if (
-            existing_closed
-            and selected_id == existing_id
-            and before["tab_id"] == target_tab.tab_id
-        ):
+        if replacing_selected and before["tab_id"] == target_tab.tab_id:
             expected["session_id"] = created.session_id
-        if after != expected:
+        # Focus landing on the document is the tool pulling someone to a page
+        # they did not ask to read, and is always undone. Any other difference
+        # is them moving while the split ran: the pane is in the tab that asked
+        # for it and is not selected, so it costs them nothing to leave there,
+        # and their move is theirs to keep.
+        if (
+            after["session_id"] == created.session_id
+            and expected["session_id"] != created.session_id
+        ):
             raise DocumentError("browser split changed global focus")
 
         return {
             "session": created.session_id,
             "elapsed": round(time.monotonic() - started, 3),
-            "focus_unchanged": True,
+            "focus_unchanged": after == expected,
             "target_tab": target_tab.tab_id,
             "reopened": existing_closed,
         }

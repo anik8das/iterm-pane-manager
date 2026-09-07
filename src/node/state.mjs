@@ -24,11 +24,19 @@ function normalizeEntry(entry, key) {
   if (entry.session !== null && typeof entry.session !== "string") {
     throw new StateError(`state entry ${key} has an invalid session`);
   }
+  if (entry.tab !== undefined && entry.tab !== null && typeof entry.tab !== "string") {
+    throw new StateError(`state entry ${key} has an invalid tab`);
+  }
   return {
     anchor: entry.anchor,
     url: entry.url,
     profile: entry.profile,
     session: entry.session,
+    // Which tab the pane is in, and when it was opened, so a crowded tab can
+    // give up its oldest reading pane instead of refusing the next document.
+    // Entries written before these existed sort oldest and belong to no tab.
+    tab: entry.tab ?? null,
+    opened: Number.isFinite(entry.opened) ? entry.opened : 0,
   };
 }
 

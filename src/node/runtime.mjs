@@ -75,8 +75,12 @@ export function openDocument(paths, entry, options = {}) {
     const result = JSON.parse(
       runPython(paths.python, paths.document, args, options.timeoutMs ?? 30_000),
     );
-    if (!result.focus_unchanged || !result.session) {
-      throw new RuntimeError("document split did not preserve its focus contract");
+    // The helper refuses to return at all when focus landed on the document,
+    // so reaching here means the contract held. `focus_unchanged` reports
+    // whether the person moved meanwhile, which is theirs to do and is not a
+    // reason to throw away a pane that is sitting correctly in its own tab.
+    if (!result.session || !result.target_tab) {
+      throw new RuntimeError("document split did not report the pane it created");
     }
     return result;
   } catch (error) {
