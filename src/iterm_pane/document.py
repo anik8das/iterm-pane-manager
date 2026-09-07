@@ -111,6 +111,7 @@ async def open_document(
             raise DocumentError("tracked browser is not in the anchor's tab")
         if iterm2.capabilities.supports_load_url(app.connection):
             await existing.async_load_url(url)
+            await app.async_refresh()
             if same_global_context(before, identity(app)):
                 await restore_target_selection(app, selected_id)
             await app.async_refresh()
@@ -144,6 +145,11 @@ async def open_document(
 
         # A tab/window switch during the call belongs to the user. Do not
         # counteract it. The location/focus checks below will reject the open.
+        # Read the selection back from iTerm2 rather than trusting the copy
+        # held from before the split: whether the person moved is the whole
+        # question here, and a stale answer moves a pane under someone who is
+        # now looking at it.
+        await app.async_refresh()
         after_split = identity(app)
         replacing_selected = existing_closed and selected_id == existing_id
         restore_id = (

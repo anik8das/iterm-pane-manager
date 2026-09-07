@@ -247,9 +247,15 @@ async def focus_events(connection, wake, watcher):
 async def main(connection, options):
     app = await iterm2.async_get_app(connection)
     watcher = Watcher(app, options)
-    await watcher.sweep("startup")
     if options.once:
+        # `--once` reports a failed sweep through its own exit code, so it
+        # keeps the bare call and the caller decides what the failure means.
+        await watcher.sweep("startup")
         return
+    # The startup sweep runs before the event loop exists, so an error here
+    # ended the process just as surely as one inside the loop, and launchd
+    # restarted straight back into it. There is a next event to retry on.
+    await watcher.sweep_guarded("startup")
     log(
         f"watching (events + {options.interval:.0f}s poll, "
         f"{options.debounce:.0f}ms debounce, "

@@ -163,7 +163,11 @@ class DocumentTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["reopened"])
         self.assertTrue(old.closed)
         self.assertEqual(self.hidden.current_session, self.anchor)
-        self.assertEqual(self.app.refresh_count, 1)
+        # One round trip to see the tab after the old pane closed, and one to
+        # ask where the person is before touching the selection. The second is
+        # bought deliberately: the answer decides whether a pane moves under
+        # someone, and a stale answer is the wrong one.
+        self.assertEqual(self.app.refresh_count, 2)
 
     async def test_newer_protocol_reloads_existing_browser(self):
         document.iterm2.capabilities.supports_load_url.return_value = True
@@ -236,6 +240,40 @@ class DocumentTest(unittest.IsolatedAsyncioTestCase):
                 self.app, self.anchor.session_id, "file:///doc.html", "doc"
             )
         self.assertTrue(self.created.closed)
+
+    async def test_a_move_seen_only_on_refresh_leaves_that_tab_alone(self):
+        """The move can land while the split is in flight.
+
+        Deciding from the copy held from before the split would restore the
+        selection inside a tab the person has just arrived in, moving a pane
+        under someone who is looking at it.
+        """
+        sibling = Session("hidden-sibling")
+        sibling.app = self.app
+        sibling.tab = self.hidden
+        self.hidden.sessions.append(sibling)
+
+        # iTerm2 only reports the move when it is asked again.
+        moved = {"seen": False}
+        original_refresh = self.app.async_refresh
+
+        async def refresh():
+            await original_refresh()
+            if not moved["seen"]:
+                moved["seen"] = True
+                self.window.current_tab = self.hidden
+                self.hidden.current_session = sibling
+
+        self.app.async_refresh = refresh
+
+        result = await document.open_document(
+            self.app, self.anchor.session_id, "file:///doc.html", "doc"
+        )
+
+        self.assertFalse(self.created.closed, "the pane belongs in its own tab")
+        self.assertEqual(result["session"], self.created.session_id)
+        # The pane they chose after arriving is still the pane they are on.
+        self.assertEqual(self.hidden.current_session, sibling)
 
     def test_opener_has_no_queue_move_or_retry_loop(self):
         source = inspect.getsource(document)
