@@ -38,6 +38,14 @@ def locate(app, session_id):
     return None, None, None
 
 
+def selected_in_tab(app, anchor_id):
+    """The pane currently selected inside the anchor's tab, or ``None``."""
+    _window, tab, _session = locate(app, anchor_id)
+    if tab is None or tab.current_session is None:
+        return None
+    return tab.current_session.session_id
+
+
 def browser_profile(name, url):
     """Build a browser profile small enough to split a crowded tab."""
     return iterm2.LocalWriteOnlyProfile(
@@ -79,12 +87,6 @@ def record_created(receipt_path, session_id):
             os.unlink(temporary)
 
 
-def same_global_context(first, second):
-    """Return whether app activity, window, and tab stayed unchanged."""
-    keys = ("app_active", "window_id", "tab_id")
-    return all(first[key] == second[key] for key in keys)
-
-
 async def open_document(
     app, anchor_id, url, profile_name, existing_id=None, receipt_path=None
 ):
@@ -112,15 +114,21 @@ async def open_document(
         if iterm2.capabilities.supports_load_url(app.connection):
             await existing.async_load_url(url)
             await app.async_refresh()
-            if same_global_context(before, identity(app)):
+            # Undo only what loading the page did. Anything else selected in
+            # that tab was chosen by the person while the load was in flight.
+            if selected_in_tab(app, anchor_id) == existing.session_id:
                 await restore_target_selection(app, selected_id)
             await app.async_refresh()
-            if identity(app) != before:
+            after_reload = identity(app)
+            if (
+                after_reload["session_id"] == existing.session_id
+                and before["session_id"] != existing.session_id
+            ):
                 raise DocumentError("reloading the browser changed global focus")
             return {
                 "session": existing.session_id,
                 "elapsed": round(time.monotonic() - started, 3),
-                "focus_unchanged": True,
+                "focus_unchanged": after_reload == before,
                 "target_tab": target_tab.tab_id,
                 "reloaded": True,
             }
@@ -150,7 +158,6 @@ async def open_document(
         # question here, and a stale answer moves a pane under someone who is
         # now looking at it.
         await app.async_refresh()
-        after_split = identity(app)
         replacing_selected = existing_closed and selected_id == existing_id
         restore_id = (
             created.session_id
@@ -159,14 +166,13 @@ async def open_document(
             if replacing_selected
             else selected_id
         )
-        # Choosing the pane selected inside the target tab never selects that
-        # tab or its window, so it is still right when the person moved while
-        # the split ran. The exception is them moving *to* this tab, where
-        # changing the selected pane would move a cursor they are watching.
-        if (
-            same_global_context(before, after_split)
-            or after_split["tab_id"] != target_tab.tab_id
-        ):
+        # Undo only our own side effect. Splitting selects the new pane inside
+        # the target tab, and putting the previous one back is the whole point.
+        # Anything else selected there was chosen by the person while the split
+        # was in flight, and is not ours to change: comparing the window and
+        # tab is not enough, because moving between panes of the tab we are
+        # splitting leaves both of those the same.
+        if selected_in_tab(app, anchor_id) == created.session_id:
             await restore_target_selection(app, restore_id)
 
         if before["tab_id"] == target_tab.tab_id:
@@ -184,15 +190,21 @@ async def open_document(
         expected = dict(before)
         if replacing_selected and before["tab_id"] == target_tab.tab_id:
             expected["session_id"] = created.session_id
-        # Focus landing on the document is the tool pulling someone to a page
-        # they did not ask to read, and is always undone. Any other difference
-        # is them moving while the split ran: the pane is in the tab that asked
-        # for it and is not selected, so it costs them nothing to leave there,
-        # and their move is theirs to keep.
-        if (
+        # Two ways this can move someone: onto the page itself, or onto the
+        # tab being split. Landing on the tab we just split, from somewhere
+        # else, cannot be told apart from them walking into it at that exact
+        # moment, so it resolves the careful way and the pane goes back.
+        # Everything else is them moving somewhere of their own choosing: the
+        # pane sits in the tab that asked for it, unselected, and stays.
+        landed_on_document = (
             after["session_id"] == created.session_id
             and expected["session_id"] != created.session_id
-        ):
+        )
+        pulled_to_the_split = (
+            after["tab_id"] == target_tab.tab_id
+            and before["tab_id"] != target_tab.tab_id
+        )
+        if landed_on_document or pulled_to_the_split:
             raise DocumentError("browser split changed global focus")
 
         return {

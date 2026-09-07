@@ -241,27 +241,28 @@ class DocumentTest(unittest.IsolatedAsyncioTestCase):
             )
         self.assertTrue(self.created.closed)
 
-    async def test_a_move_seen_only_on_refresh_leaves_that_tab_alone(self):
-        """The move can land while the split is in flight.
+    async def test_choosing_another_pane_mid_split_is_not_overridden(self):
+        """The move that hides inside one tab.
 
-        Deciding from the copy held from before the split would restore the
-        selection inside a tab the person has just arrived in, moving a pane
-        under someone who is looking at it.
+        Comparing window and tab cannot see it: both are unchanged when
+        someone clicks a sibling pane of the tab being split. The restore
+        exists to undo the split selecting the new pane, so it runs only while
+        the new pane is what is selected.
         """
         sibling = Session("hidden-sibling")
         sibling.app = self.app
         sibling.tab = self.hidden
         self.hidden.sessions.append(sibling)
+        # A foreground open: they are already in the tab being split.
+        self.window.current_tab = self.hidden
 
-        # iTerm2 only reports the move when it is asked again.
-        moved = {"seen": False}
+        chose = {"done": False}
         original_refresh = self.app.async_refresh
 
         async def refresh():
             await original_refresh()
-            if not moved["seen"]:
-                moved["seen"] = True
-                self.window.current_tab = self.hidden
+            if not chose["done"]:
+                chose["done"] = True
                 self.hidden.current_session = sibling
 
         self.app.async_refresh = refresh
@@ -270,10 +271,50 @@ class DocumentTest(unittest.IsolatedAsyncioTestCase):
             self.app, self.anchor.session_id, "file:///doc.html", "doc"
         )
 
-        self.assertFalse(self.created.closed, "the pane belongs in its own tab")
+        self.assertFalse(self.created.closed, "the pane belongs in its tab")
         self.assertEqual(result["session"], self.created.session_id)
-        # The pane they chose after arriving is still the pane they are on.
-        self.assertEqual(self.hidden.current_session, sibling)
+        self.assertEqual(
+            self.hidden.current_session, sibling, "their pane, their choice"
+        )
+        self.assertEqual(self.anchor.activations, [], "the anchor was not reactivated")
+
+    async def test_reloading_does_not_override_a_pane_chosen_mid_load(self):
+        """The same race on the path that navigates an existing browser."""
+        document.iterm2.capabilities.supports_load_url.return_value = True
+        old = Session("browser-old")
+        old.app = self.app
+        old.tab = self.hidden
+        self.hidden.sessions.append(old)
+        sibling = Session("hidden-sibling")
+        sibling.app = self.app
+        sibling.tab = self.hidden
+        self.hidden.sessions.append(sibling)
+        self.window.current_tab = self.hidden
+
+        chose = {"done": False}
+        original_refresh = self.app.async_refresh
+
+        async def refresh():
+            await original_refresh()
+            if not chose["done"]:
+                chose["done"] = True
+                self.hidden.current_session = sibling
+
+        self.app.async_refresh = refresh
+
+        result = await document.open_document(
+            self.app,
+            self.anchor.session_id,
+            "file:///doc.html",
+            "doc",
+            old.session_id,
+        )
+
+        self.assertTrue(result["reloaded"])
+        self.assertEqual(
+            self.hidden.current_session, sibling, "their pane, their choice"
+        )
+        self.assertEqual(self.anchor.activations, [])
 
     def test_opener_has_no_queue_move_or_retry_loop(self):
         source = inspect.getsource(document)
