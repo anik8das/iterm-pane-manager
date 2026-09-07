@@ -24,6 +24,7 @@ Keep iTerm2 split panes equal without changing normal focus behavior. The option
 - Only a process actually in that tab may open, close, or even it; `PANE_ANCHOR` overrides.
 - User tab and window changes always win if they race with a document open.
 - Reopening the same document replaces its tracked browser pane.
+- A tab holds at most three document panes; the oldest gives up its place.
 
 ## Requirements
 
@@ -86,6 +87,7 @@ git pull --ff-only
 
 ## Documentation
 
+- [Goals](docs/goals.md)
 - [Architecture](docs/architecture.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Contributing](CONTRIBUTING.md)

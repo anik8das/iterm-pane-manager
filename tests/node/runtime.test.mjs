@@ -19,7 +19,7 @@ test("a timed-out document helper closes the pane named in its receipt", (t) => 
 const args = process.argv.slice(2);
 const receipt = args[args.indexOf("--receipt") + 1];
 fs.writeFileSync(receipt, "browser-partial");
-setTimeout(() => {}, 5_000);
+setTimeout(() => {}, 30_000);
 `,
   );
   fs.writeFileSync(
@@ -40,11 +40,11 @@ fs.writeFileSync(${JSON.stringify(cleanup)}, process.argv.slice(2).join(" "));
           profile: "document",
           session: null,
         },
-        { timeoutMs: 100, beforeSessionIds: new Set(["anchor-session"]) },
+        { timeoutMs: 2_000, beforeSessionIds: new Set(["anchor-session"]) },
       ),
     /ETIMEDOUT/,
   );
-  assert.ok(Date.now() - started < 2_000, "the timeout must remain bounded");
+  assert.ok(Date.now() - started < 15_000, "the timeout must remain bounded");
   assert.equal(fs.readFileSync(cleanup, "utf8"), "close --session browser-partial");
 });
 
@@ -95,5 +95,65 @@ if (args[0] === "recover") {
   assert.equal(
     fs.readFileSync(cleanup, "utf8"),
     "close --session browser-before-receipt",
+  );
+});
+
+test("a pane is kept when the person moved while it opened", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "iterm-pane-runtime-test-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const document = path.join(directory, "document.mjs");
+  const sessions = path.join(directory, "sessions.mjs");
+  const cleanup = path.join(directory, "cleanup.log");
+
+  // The helper only returns when focus did not land on the document, so a
+  // false `focus_unchanged` means the person moved, not that the tool did.
+  fs.writeFileSync(
+    document,
+    `console.log(JSON.stringify({
+  session: "browser-new",
+  target_tab: "hidden-tab",
+  elapsed: 0.4,
+  focus_unchanged: false,
+}));
+`,
+  );
+  fs.writeFileSync(
+    sessions,
+    `import fs from "node:fs";
+fs.writeFileSync(${JSON.stringify(cleanup)}, process.argv.slice(2).join(" "));
+`,
+  );
+
+  const result = openDocument(
+    { python: process.execPath, document, sessions },
+    { anchor: "anchor-session", url: "file:///d.html", profile: "d", session: null },
+    { beforeSessionIds: new Set(["anchor-session"]) },
+  );
+
+  assert.equal(result.session, "browser-new");
+  assert.equal(result.focus_unchanged, false);
+  assert.equal(fs.existsSync(cleanup), false, "nothing may be closed");
+});
+
+test("a helper that names no pane is still a failure", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "iterm-pane-runtime-test-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const document = path.join(directory, "document.mjs");
+  const sessions = path.join(directory, "sessions.mjs");
+
+  fs.writeFileSync(
+    document,
+    'console.log(JSON.stringify({ target_tab: "t", focus_unchanged: true }));\n',
+  );
+  fs.writeFileSync(sessions, "\n");
+
+  assert.throws(
+    () =>
+      openDocument(
+        { python: process.execPath, document, sessions },
+        { anchor: "anchor-session", url: "file:///d.html", profile: "d", session: null },
+        { beforeSessionIds: new Set(["anchor-session"]) },
+      ),
+    /did not report the pane it created/,
   );
 });

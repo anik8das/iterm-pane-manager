@@ -15,6 +15,7 @@ class Session:
         self.split_created = None
         self.split_target = None
         self.change_global_tab = False
+        self.split_side_effect = None
         self.activations = []
         self.closed = False
         self.loaded_urls = []
@@ -30,6 +31,8 @@ class Session:
         if self.change_global_tab:
             self.app.current_window = target.window
             target.window.current_tab = target
+        if self.split_side_effect is not None:
+            self.split_side_effect()
         return created
 
     async def async_activate(self, select_tab=True, order_window_front=True):
@@ -197,6 +200,42 @@ class DocumentTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.created.closed)
         self.assertEqual(self.app.current_window.current_tab, self.hidden)
         self.assertEqual(self.hidden.current_session, self.anchor)
+
+    async def test_a_move_to_another_tab_keeps_the_document(self):
+        """Their move is theirs. The pane is in the tab that asked for it."""
+        elsewhere = Session("elsewhere-code")
+        other = Tab("other-tab", [elsewhere])
+        self.window.tabs.append(other)
+        other.window = self.window
+        elsewhere.tab = other
+        elsewhere.app = self.app
+
+        def person_switches_tabs():
+            self.window.current_tab = other
+
+        self.anchor.split_side_effect = person_switches_tabs
+
+        result = await document.open_document(
+            self.app, self.anchor.session_id, "file:///doc.html", "doc"
+        )
+
+        self.assertFalse(self.created.closed)
+        self.assertIn(self.created, self.hidden.sessions)
+        self.assertEqual(result["session"], self.created.session_id)
+        self.assertFalse(result["focus_unchanged"])
+        # Where they went is where they stay.
+        self.assertEqual(self.window.current_tab, other)
+        # And the tab they left keeps its terminal selected, not the document.
+        self.assertEqual(self.hidden.current_session, self.anchor)
+
+    async def test_focus_landing_on_the_document_is_still_rolled_back(self):
+        """The one change that is never theirs: being pulled to the page."""
+        self.anchor.change_global_tab = True
+        with self.assertRaises(document.DocumentError):
+            await document.open_document(
+                self.app, self.anchor.session_id, "file:///doc.html", "doc"
+            )
+        self.assertTrue(self.created.closed)
 
     def test_opener_has_no_queue_move_or_retry_loop(self):
         source = inspect.getsource(document)

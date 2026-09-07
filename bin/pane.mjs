@@ -15,6 +15,7 @@ import {
   writeStateAtomic,
 } from "../src/node/state.mjs";
 import { ownsAnchor, parseAnchor } from "../src/node/anchor.mjs";
+import { documentsToEvict } from "../src/node/budget.mjs";
 import { callerTty } from "../src/node/caller.mjs";
 import { renderDiagrams } from "../src/node/diagram.mjs";
 import { closeCandidates, resolveTarget } from "../src/node/target.mjs";
@@ -96,19 +97,19 @@ function anchorSession() {
  * way out for a caller behind a multiplexer or a remote shell.
  */
 function requireOwnership(anchor) {
-  if (!anchor) return;
+  if (!anchor) return null;
   // Asked before either way out below, so a tab that has closed is refused
   // here rather than after a document has been rendered for it. Naming a tab
   // deliberately says which tab, not that it still exists.
   const status = sessionStatus(PATHS, anchor);
   if (!status.exists) fail(`no iTerm2 session ${anchor}; its tab has closed`);
-  if (parseAnchor(process.env.PANE_ANCHOR)) return;
+  if (parseAnchor(process.env.PANE_ANCHOR)) return status;
   const caller = callerTty();
   // A sandbox that denies process information leaves the call unplaceable.
   // Refusing then would break every caller inside one, so an unanswerable
   // question is not treated as a failed answer. `--doctor` reports it.
-  if (caller === null) return;
-  if (ownsAnchor(caller, status.tty)) return;
+  if (caller === null) return status;
+  if (ownsAnchor(caller, status.tty)) return status;
   fail(
     "this process is not in the tab named by ITERM_SESSION_ID, so it inherited " +
       "that address rather than earning it. Set PANE_ANCHOR to open there anyway.",
@@ -278,16 +279,37 @@ function listDocuments(anchor, all) {
   }
 }
 
+/**
+ * Close the oldest document panes in this tab until the next one has room.
+ *
+ * The choice is `documentsToEvict`; this only carries it out, so the policy
+ * can be read and tested without an iTerm2 connection.
+ */
+function makeRoom(state, { key, anchor, status, live }) {
+  const evicted = documentsToEvict(state, {
+    key,
+    anchor,
+    tabId: status?.tab_id ?? null,
+    reading: status?.active ? status.selected_session : null,
+    live,
+  });
+  if (!evicted.length) return [];
+  closeSessions(PATHS, evicted.map(([, entry]) => entry.session));
+  for (const [evictedKey] of evicted) delete state.documents[evictedKey];
+  return evicted.map(([, entry]) => entry.profile);
+}
+
 function openTarget(target, raw) {
   const anchor = anchorSession();
   if (!anchor) {
     fail("ITERM_SESSION_ID is missing; run pane from the iTerm2 tab that should receive the document");
   }
-  requireOwnership(anchor);
+  const status = requireOwnership(anchor);
   const url = resolveTarget(target, { raw, renderer: RENDERER });
   const key = keyFor(anchor, url);
   let result;
   let openError;
+  let evicted = [];
 
   withStateLock(STATE_PATH, () => {
     const loaded = readState(STATE_PATH);
@@ -301,9 +323,15 @@ function openTarget(target, raw) {
       profile: previous?.profile ?? safeProfileName(anchor, url),
       session: previous?.session ?? null,
     };
+    evicted = makeRoom(state, { key, anchor, status, live });
     try {
       result = openDocument(PATHS, entry, { beforeSessionIds: live });
-      state.documents[key] = { ...entry, session: result.session };
+      state.documents[key] = {
+        ...entry,
+        session: result.session,
+        tab: result.target_tab ?? status?.tab_id ?? null,
+        opened: Date.now(),
+      };
       writeStateAtomic(STATE_PATH, state);
     } catch (error) {
       openError = error;
@@ -313,13 +341,24 @@ function openTarget(target, raw) {
       if (previous?.session && !after.has(previous.session)) {
         delete state.documents[key];
       }
-      if (loaded.migrated || changed || previous) writeStateAtomic(STATE_PATH, state);
+      if (loaded.migrated || changed || previous || evicted.length) {
+        writeStateAtomic(STATE_PATH, state);
+      }
     }
   });
 
-  if (openError) fail(`document was not opened:\n${openError.message}`);
+  if (openError) {
+    const full = /CANNOT_SPLIT/.test(openError.message)
+      ? "\n  the tab has no room left to split; close a pane in it and try again"
+      : "";
+    fail(`document was not opened:\n${openError.message}${full}`);
+  }
+  const focus = result.focus_unchanged
+    ? "focus unchanged"
+    : "you moved while it opened, so focus was left alone";
+  const freed = evicted.length ? `\n  closed ${evicted.length} older document pane(s) to make room` : "";
   console.log(
-    `${result.session}  ${url}\n  ready in target tab; focus unchanged (${result.elapsed}s)`,
+    `${result.session}  ${url}\n  ready in target tab; ${focus} (${result.elapsed}s)${freed}`,
   );
 }
 
@@ -379,11 +418,14 @@ function runDoctor() {
   const watcher = launchctl("print", `${DOMAIN}/${LABEL}`);
   checks.push(["background watcher", watcher.ok, watcher.ok ? "loaded" : "not loaded"]);
   const webContent = processCount("com.apple.WebKit.WebContent");
+  // A count that could not be taken has not shown anything to be wrong, so it
+  // passes for the same reason caller placement does. Reporting it as a
+  // failure told every agent inside a sandbox that a healthy tool was broken.
   checks.push([
     "iTerm browser capacity",
-    webContent !== null && webContent < 400,
+    webContent === null || webContent < 400,
     webContent === null
-      ? "process count unavailable"
+      ? "unavailable: the process table cannot be read, so the count is skipped"
       : `${webContent} WebKit content processes${
           webContent >= 400 ? "; macOS is rejecting new browser processes" : ""
         }`,

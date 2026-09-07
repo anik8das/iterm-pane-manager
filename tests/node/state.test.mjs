@@ -45,6 +45,10 @@ test("legacy state migrates without queue fields", () => {
     url: "file:///doc.html",
     profile: "pane doc",
     session: "browser",
+    // An entry from before the tab budget existed belongs to no tab and
+    // sorts oldest, so it is the first to give up its slot.
+    tab: null,
+    opened: 0,
   });
 });
 
@@ -57,6 +61,8 @@ test("atomic write leaves valid state and no temporary files", () => {
     url: "file:///doc.html",
     profile: "pane doc",
     session: "browser",
+    tab: "tab-1",
+    opened: 1_700_000_000_000,
   };
   writeStateAtomic(statePath, state);
   assert.deepEqual(readState(statePath).state, state);

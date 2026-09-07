@@ -178,6 +178,27 @@ class Watcher:
         if moved:
             self.changes.append(now)
 
+    async def sweep_guarded(self, reason):
+        """Run one sweep, surviving the errors that describe only this round.
+
+        A pane appearing or closing mid-sweep makes iTerm2 reject the layout
+        that was computed against the tree before it, and a busy iTerm2 lets
+        the call time out. Both are about this round, not about the watcher.
+
+        Letting either escape ends the process, and launchd waits 30 seconds
+        before starting it again. That gap lands exactly where evening matters
+        most, because opening a document is itself what changes the tree.
+        Connection failures are deliberately not caught: those do need a
+        restart, and launchd is the right thing to do it.
+        """
+        try:
+            await self.sweep(reason)
+            return True
+        except (iterm2.rpc.RPCException, asyncio.TimeoutError) as error:
+            detail = str(error) or type(error).__name__
+            log(f"{reason}: tab changed under the sweep ({detail}); will retry")
+            return False
+
     async def run(self, wake):
         while True:
             reason = "poll"
@@ -200,7 +221,7 @@ class Watcher:
             if self.focus_pending:
                 reason = "focus"
             self.focus_pending = False
-            await self.sweep(reason)
+            await self.sweep_guarded(reason)
 
 
 async def layout_events(connection, wake):
