@@ -59,5 +59,41 @@ class SweepSurvivesRoundFailures(unittest.IsolatedAsyncioTestCase):
             await self.watcher.sweep_guarded("event")
 
 
+class StartupIsNotAnExceptionToTheRule(unittest.IsolatedAsyncioTestCase):
+    """The first sweep runs before the event loop, and used to escape the guard.
+
+    launchd restarts a watcher that exits, so a startup sweep that always
+    failed put the process in a loop with a 30-second delay in it, evening
+    nothing the whole time.
+    """
+
+    async def run_main(self, once):
+        async def nothing(*_args, **_kwargs):
+            return None
+
+        with (
+            mock.patch.object(watch.iterm2, "async_get_app", side_effect=nothing),
+            mock.patch.object(watch, "layout_events", side_effect=nothing),
+            mock.patch.object(watch, "focus_events", side_effect=nothing),
+            mock.patch.object(watch.Watcher, "run", side_effect=nothing),
+            mock.patch.object(watch, "log"),
+        ):
+            await watch.main(object(), options(once=once))
+
+    async def test_a_failed_startup_sweep_does_not_end_the_watcher(self):
+        raised = iterm2.rpc.RPCException("WRONG_TREE")
+        with mock.patch.object(watch.Watcher, "sweep", side_effect=raised):
+            await self.run_main(once=False)
+
+    async def test_once_still_reports_a_failed_sweep_to_its_caller(self):
+        """`--once` turns an uncaught failure into an exit code, so it keeps it."""
+        raised = iterm2.rpc.RPCException("WRONG_TREE")
+        with (
+            mock.patch.object(watch.Watcher, "sweep", side_effect=raised),
+            self.assertRaises(iterm2.rpc.RPCException),
+        ):
+            await self.run_main(once=True)
+
+
 if __name__ == "__main__":
     unittest.main()

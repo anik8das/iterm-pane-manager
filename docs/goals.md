@@ -87,6 +87,25 @@ run has not proved anything is wrong, so it must not be reported as broken.
 `pane --doctor` says "unavailable" for those, and the tool proceeds. Reporting
 them as failures teaches agents to give up on a healthy tool.
 
+## Known limits
+
+Rule 3 has one gap that this design cannot close.
+
+Splitting a tab selects the new pane, and putting the previously selected one
+back is the only reason the restore exists. So it runs only while the new pane
+is the selected one: anything else selected there was chosen by a person.
+
+If someone selects another pane *while the split is still in flight*, and the
+split then completes and selects the new pane, the two orderings are
+indistinguishable afterwards. iTerm2 reports only the final state, so that
+choice is overwritten and their cursor moves back one pane.
+
+Closing it means subscribing to selection events for the half second the split
+takes, inside a helper that exists only for that half second. That is a lot of
+machinery for a rare bounce within one tab, so it is written down here instead.
+Nothing about it can move a window or a tab, only the selected pane inside the
+tab being split.
+
 ## Out of scope
 
 - Agents outside iTerm2. If it is not an iTerm2 tab, there is nothing to split.

@@ -38,6 +38,14 @@ def locate(app, session_id):
     return None, None, None
 
 
+def selected_in_tab(app, anchor_id):
+    """The pane currently selected inside the anchor's tab, or ``None``."""
+    _window, tab, _session = locate(app, anchor_id)
+    if tab is None or tab.current_session is None:
+        return None
+    return tab.current_session.session_id
+
+
 def browser_profile(name, url):
     """Build a browser profile small enough to split a crowded tab."""
     return iterm2.LocalWriteOnlyProfile(
@@ -79,12 +87,6 @@ def record_created(receipt_path, session_id):
             os.unlink(temporary)
 
 
-def same_global_context(first, second):
-    """Return whether app activity, window, and tab stayed unchanged."""
-    keys = ("app_active", "window_id", "tab_id")
-    return all(first[key] == second[key] for key in keys)
-
-
 async def open_document(
     app, anchor_id, url, profile_name, existing_id=None, receipt_path=None
 ):
@@ -98,6 +100,7 @@ async def open_document(
     selected_id = selected.session_id if selected else anchor_id
 
     existing_closed = False
+    was_showing_the_document = False
     if existing_id:
         existing_window, existing_tab, existing = locate(app, existing_id)
         if existing is None:
@@ -111,24 +114,46 @@ async def open_document(
             raise DocumentError("tracked browser is not in the anchor's tab")
         if iterm2.capabilities.supports_load_url(app.connection):
             await existing.async_load_url(url)
-            if same_global_context(before, identity(app)):
+            await app.async_refresh()
+            # Read this before touching anything: restoring the selection
+            # would move them off the pane they are on and erase the evidence
+            # that the tab came forward at all.
+            walked_in = (
+                identity(app)["tab_id"] == target_tab.tab_id
+                and before["tab_id"] != target_tab.tab_id
+            )
+            # Undo only what loading the page did. Anything else selected in
+            # that tab was chosen by the person while the load was in flight.
+            if not walked_in and selected_in_tab(app, anchor_id) == existing.session_id:
                 await restore_target_selection(app, selected_id)
             await app.async_refresh()
-            if identity(app) != before:
+            after_reload = identity(app)
+            landed_on_document = (
+                after_reload["session_id"] == existing.session_id
+                and before["session_id"] != existing.session_id
+            )
+            if landed_on_document or walked_in:
                 raise DocumentError("reloading the browser changed global focus")
             return {
                 "session": existing.session_id,
                 "elapsed": round(time.monotonic() - started, 3),
-                "focus_unchanged": True,
+                "focus_unchanged": after_reload == before,
                 "target_tab": target_tab.tab_id,
                 "reloaded": True,
             }
 
         # Older protocol versions cannot navigate an existing browser. Closing
         # first frees its exact split-tree slot in crowded tabs.
+        was_showing_the_document = selected_id == existing_id
         await existing.async_close(force=True)
         existing_closed = True
         await app.async_refresh()
+        # The pane that goes back is whatever is selected now the old document
+        # pane has gone, not what was selected before it closed. This refresh
+        # is already paid for, so the fresher reading is free.
+        reselected = selected_in_tab(app, anchor_id)
+        if reselected:
+            selected_id = reselected
         target_window, target_tab, anchor = locate(app, anchor_id)
         if anchor is None:
             raise DocumentError("anchor closed while replacing the browser")
@@ -144,8 +169,12 @@ async def open_document(
 
         # A tab/window switch during the call belongs to the user. Do not
         # counteract it. The location/focus checks below will reject the open.
-        after_split = identity(app)
-        replacing_selected = existing_closed and selected_id == existing_id
+        # Read the selection back from iTerm2 rather than trusting the copy
+        # held from before the split: whether the person moved is the whole
+        # question here, and a stale answer moves a pane under someone who is
+        # now looking at it.
+        await app.async_refresh()
+        replacing_selected = existing_closed and was_showing_the_document
         restore_id = (
             created.session_id
             if replacing_selected and before["tab_id"] == target_tab.tab_id
@@ -153,14 +182,13 @@ async def open_document(
             if replacing_selected
             else selected_id
         )
-        # Choosing the pane selected inside the target tab never selects that
-        # tab or its window, so it is still right when the person moved while
-        # the split ran. The exception is them moving *to* this tab, where
-        # changing the selected pane would move a cursor they are watching.
-        if (
-            same_global_context(before, after_split)
-            or after_split["tab_id"] != target_tab.tab_id
-        ):
+        # Undo only our own side effect. Splitting selects the new pane inside
+        # the target tab, and putting the previous one back is the whole point.
+        # Anything else selected there was chosen by the person while the split
+        # was in flight, and is not ours to change: comparing the window and
+        # tab is not enough, because moving between panes of the tab we are
+        # splitting leaves both of those the same.
+        if selected_in_tab(app, anchor_id) == created.session_id:
             await restore_target_selection(app, restore_id)
 
         if before["tab_id"] == target_tab.tab_id:
@@ -178,15 +206,21 @@ async def open_document(
         expected = dict(before)
         if replacing_selected and before["tab_id"] == target_tab.tab_id:
             expected["session_id"] = created.session_id
-        # Focus landing on the document is the tool pulling someone to a page
-        # they did not ask to read, and is always undone. Any other difference
-        # is them moving while the split ran: the pane is in the tab that asked
-        # for it and is not selected, so it costs them nothing to leave there,
-        # and their move is theirs to keep.
-        if (
+        # Two ways this can move someone: onto the page itself, or onto the
+        # tab being split. Landing on the tab we just split, from somewhere
+        # else, cannot be told apart from them walking into it at that exact
+        # moment, so it resolves the careful way and the pane goes back.
+        # Everything else is them moving somewhere of their own choosing: the
+        # pane sits in the tab that asked for it, unselected, and stays.
+        landed_on_document = (
             after["session_id"] == created.session_id
             and expected["session_id"] != created.session_id
-        ):
+        )
+        pulled_to_the_split = (
+            after["tab_id"] == target_tab.tab_id
+            and before["tab_id"] != target_tab.tab_id
+        )
+        if landed_on_document or pulled_to_the_split:
             raise DocumentError("browser split changed global focus")
 
         return {
