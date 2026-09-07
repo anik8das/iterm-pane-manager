@@ -316,6 +316,45 @@ class DocumentTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(self.anchor.activations, [])
 
+    async def test_walking_into_the_tab_during_a_reload_is_not_called_fine(self):
+        """Arriving mid-reload, on a pane that is not the document.
+
+        Nothing here trips the other rule: the document pane is not selected,
+        so the restore never runs and the final session is not the browser.
+        Only the tab having come forward is left to notice it.
+        """
+        document.iterm2.capabilities.supports_load_url.return_value = True
+        old = Session("browser-old")
+        sibling = Session("hidden-sibling")
+        for pane in (old, sibling):
+            pane.app = self.app
+            pane.tab = self.hidden
+            self.hidden.sessions.append(pane)
+        self.hidden.current_session = self.anchor
+
+        walked = {"in": False}
+        original_refresh = self.app.async_refresh
+
+        async def refresh():
+            await original_refresh()
+            if not walked["in"]:
+                walked["in"] = True
+                self.window.current_tab = self.hidden
+                self.hidden.current_session = sibling
+
+        self.app.async_refresh = refresh
+
+        with self.assertRaises(document.DocumentError):
+            await document.open_document(
+                self.app,
+                self.anchor.session_id,
+                "file:///doc.html",
+                "doc",
+                old.session_id,
+            )
+        self.assertEqual(self.hidden.current_session, sibling, "their pane, untouched")
+        self.assertEqual(self.anchor.activations, [])
+
     def test_opener_has_no_queue_move_or_retry_loop(self):
         source = inspect.getsource(document)
         for forbidden in (

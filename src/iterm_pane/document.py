@@ -100,6 +100,7 @@ async def open_document(
     selected_id = selected.session_id if selected else anchor_id
 
     existing_closed = False
+    was_showing_the_document = False
     if existing_id:
         existing_window, existing_tab, existing = locate(app, existing_id)
         if existing is None:
@@ -114,16 +115,24 @@ async def open_document(
         if iterm2.capabilities.supports_load_url(app.connection):
             await existing.async_load_url(url)
             await app.async_refresh()
+            # Read this before touching anything: restoring the selection
+            # would move them off the pane they are on and erase the evidence
+            # that the tab came forward at all.
+            walked_in = (
+                identity(app)["tab_id"] == target_tab.tab_id
+                and before["tab_id"] != target_tab.tab_id
+            )
             # Undo only what loading the page did. Anything else selected in
             # that tab was chosen by the person while the load was in flight.
-            if selected_in_tab(app, anchor_id) == existing.session_id:
+            if not walked_in and selected_in_tab(app, anchor_id) == existing.session_id:
                 await restore_target_selection(app, selected_id)
             await app.async_refresh()
             after_reload = identity(app)
-            if (
+            landed_on_document = (
                 after_reload["session_id"] == existing.session_id
                 and before["session_id"] != existing.session_id
-            ):
+            )
+            if landed_on_document or walked_in:
                 raise DocumentError("reloading the browser changed global focus")
             return {
                 "session": existing.session_id,
@@ -135,9 +144,16 @@ async def open_document(
 
         # Older protocol versions cannot navigate an existing browser. Closing
         # first frees its exact split-tree slot in crowded tabs.
+        was_showing_the_document = selected_id == existing_id
         await existing.async_close(force=True)
         existing_closed = True
         await app.async_refresh()
+        # The pane that goes back is whatever is selected now the old document
+        # pane has gone, not what was selected before it closed. This refresh
+        # is already paid for, so the fresher reading is free.
+        reselected = selected_in_tab(app, anchor_id)
+        if reselected:
+            selected_id = reselected
         target_window, target_tab, anchor = locate(app, anchor_id)
         if anchor is None:
             raise DocumentError("anchor closed while replacing the browser")
@@ -158,7 +174,7 @@ async def open_document(
         # question here, and a stale answer moves a pane under someone who is
         # now looking at it.
         await app.async_refresh()
-        replacing_selected = existing_closed and selected_id == existing_id
+        replacing_selected = existing_closed and was_showing_the_document
         restore_id = (
             created.session_id
             if replacing_selected and before["tab_id"] == target_tab.tab_id
