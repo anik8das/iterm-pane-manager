@@ -59,7 +59,10 @@ h2{font-size:1.35rem;margin:2.4em 0 .7em;padding-top:.9em;border-top:1px solid v
 h3{font-size:1.08rem;margin:1.8em 0 .5em}
 li{margin:.25em 0}strong{font-weight:650}a{color:var(--accent)}
 code{font:.87em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--code);padding:.15em .4em;border-radius:4px}
-pre{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow-x:auto}
+/* Soft-wrap instead of scrolling sideways: a soft wrap is presentation only, so
+   the copy button still yields exactly the newlines the author typed. Authors
+   must never hard-wrap a fenced block to fit: that break would be copied. */
+pre{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;white-space:pre-wrap;overflow-wrap:anywhere}
 pre code{background:none;padding:0;font-size:.85rem;line-height:1.55}
 blockquote{margin:1.2em 0;padding:.2em 1.1em;border-left:3px solid var(--line);color:var(--muted)}
 .table-wrap{overflow-x:auto;margin:1.3em 0}
@@ -70,7 +73,8 @@ tbody tr:last-child td{border-bottom:none}tbody tr:hover{background:var(--card)}
 figure.diagram{margin:1.6em 0}.diagram-scroll{overflow-x:auto;background:#fbfcfd;border:1px solid var(--line);border-radius:12px;padding:22px;display:flex;justify-content:safe center;color:#1c2024}
 .diagram-scroll svg{max-width:none;height:auto;flex:none}.diagram-scroll svg text{fill:#1c2024}
 .diagram.error{background:#ffe9e9;color:#8a1f1f;padding:14px;border-radius:8px;font-family:monospace;font-size:.85rem}
-.codeblock{position:relative;margin:1.3em 0}.codeblock pre{margin:0}
+/* Wrapped lines now reach the right edge, so keep them out from under the button. */
+.codeblock{position:relative;margin:1.3em 0}.codeblock pre{margin:0;padding-right:5.5em}
 .copy-button{position:absolute;top:8px;right:8px;font:600 .7rem/1 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer;opacity:.5}
 .codeblock:hover .copy-button,.copy-button:focus-visible{opacity:1}.copy-button.ok{color:#1a7f37;border-color:#1a7f37;opacity:1}.copy-button.bad{color:#b3261e;border-color:#b3261e;opacity:1}
 hr{border:none;border-top:1px solid var(--line);margin:2.4em 0}
