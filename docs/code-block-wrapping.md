@@ -31,7 +31,7 @@ flowchart TD
 | `bin/mdrender.mjs:62` | `pre` gets `white-space:pre-wrap` and `overflow-wrap:anywhere`, replacing `overflow-x:auto` |
 | `bin/mdrender.mjs:75` | the `pre` inside a `.codeblock` gets right padding so a wrapped line does not run under the Copy button |
 | `tests/node/renderer.test.mjs` | a long line renders wrapped and reaches `</code>` with only the newlines the author typed |
-| `~/.claude/CLAUDE.md` | house rule: never hard-wrap inside a fence |
+| personal agent config, outside this repository | house rule: never hard-wrap inside a fence |
 
 `overflow-wrap:anywhere` is the part that handles a single unbreakable token, a 300-character URL
 or a hash, which has no space to fold at. It breaks mid-token on screen only.
