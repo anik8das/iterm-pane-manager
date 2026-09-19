@@ -32,6 +32,16 @@ test("renderer writes self-contained HTML with safe raw markup", (t) => {
   );
 });
 
+test("a long code line wraps on screen without gaining a newline", (t) => {
+  const long = `curl -X POST https://example.test/v1/${"a".repeat(300)}`;
+  const html = render(t, `\`\`\`text\n${long}\nsecond line\n\`\`\`\n`);
+  // Soft wrap is presentation, so nothing horizontal to scroll...
+  assert.match(html, /\bpre\{[^}]*white-space:pre-wrap/);
+  assert.doesNotMatch(html, /\bpre\{[^}]*overflow-x:auto/);
+  // ...and the text the copy button reads still has only the author's breaks.
+  assert.ok(html.includes(`${long}\nsecond line\n</code>`));
+});
+
 test("a document with no heading is titled by its file name", (t) => {
   const html = render(t, "---\nid: x\n---\n\nbody\n", "24-takes-the-release.md");
   assert.match(html, /<title>24-takes-the-release<\/title>/);
