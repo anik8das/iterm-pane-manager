@@ -77,6 +77,14 @@ stateDiagram-v2
     Tracked --> Missing: stale entry pruned
 ```
 
+A tracked document is replaced one of two ways. iTerm2 can navigate an open
+browser pane, which keeps the pane and its slot in the split tree, but its
+`load_url` call accepts `http` and `https` addresses only and answers
+`Invalid URL` for anything else. A rendered document is a `file:` address, so it
+is replaced by closing the pane and splitting again with the address carried in
+the profile, which is also what protocol versions without navigation do. Both
+paths end in the same tab, with the same focus contract and the same rollback.
+
 State lives at `~/.local/state/iterm-pane/state.json`. It records only document identity, anchor session, browser session, and a neutral profile name. Writes use a same-directory temporary file, file sync, and atomic rename. A process-owned directory lock prevents concurrent read-modify-write loss.
 
 ## Focus contract

@@ -178,13 +178,47 @@ class DocumentTest(unittest.IsolatedAsyncioTestCase):
         result = await document.open_document(
             self.app,
             self.anchor.session_id,
-            "file:///doc.html",
+            "https://example.com/doc.html",
             "doc",
             old.session_id,
         )
         self.assertEqual(result["session"], old.session_id)
-        self.assertEqual(old.loaded_urls, ["file:///doc.html"])
+        self.assertEqual(old.loaded_urls, ["https://example.com/doc.html"])
         self.assertFalse(old.closed)
+
+    async def test_a_rendered_document_is_replaced_without_navigating(self):
+        """A `file:` address is never handed to `load_url`.
+
+        iTerm2 answers `Invalid URL` for every scheme but `http` and `https`,
+        and rendered documents are always `file:`. Asking anyway lost the
+        replacement outright, so every re-open of a document failed on a
+        protocol new enough to offer navigation. The pane is replaced instead.
+        """
+        document.iterm2.capabilities.supports_load_url.return_value = True
+        old = Session("browser-old")
+        old.app = self.app
+        old.tab = self.hidden
+        self.hidden.sessions.append(old)
+        result = await document.open_document(
+            self.app,
+            self.anchor.session_id,
+            "file:///doc.html",
+            "doc",
+            old.session_id,
+        )
+        self.assertEqual(old.loaded_urls, [])
+        self.assertTrue(old.closed)
+        self.assertEqual(result["session"], self.created.session_id)
+        self.assertTrue(result["reopened"])
+        self.assertEqual(result["target_tab"], self.hidden.tab_id)
+
+    async def test_navigable_accepts_web_addresses_only(self):
+        self.assertTrue(document.navigable("http://example.com/"))
+        self.assertTrue(document.navigable("https://example.com/"))
+        self.assertTrue(document.navigable("HTTPS://EXAMPLE.COM/"))
+        self.assertFalse(document.navigable("file:///doc.html"))
+        self.assertFalse(document.navigable("about:blank"))
+        self.assertFalse(document.navigable(""))
 
     async def test_wrong_tab_rolls_back_created_pane(self):
         self.anchor.split_target = self.visible
@@ -305,7 +339,7 @@ class DocumentTest(unittest.IsolatedAsyncioTestCase):
         result = await document.open_document(
             self.app,
             self.anchor.session_id,
-            "file:///doc.html",
+            "https://example.com/doc.html",
             "doc",
             old.session_id,
         )
@@ -348,7 +382,7 @@ class DocumentTest(unittest.IsolatedAsyncioTestCase):
             await document.open_document(
                 self.app,
                 self.anchor.session_id,
-                "file:///doc.html",
+                "https://example.com/doc.html",
                 "doc",
                 old.session_id,
             )

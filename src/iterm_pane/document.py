@@ -46,6 +46,23 @@ def selected_in_tab(app, anchor_id):
     return tab.current_session.session_id
 
 
+def navigable(url):
+    """Whether iTerm2 will navigate an open browser pane to this address.
+
+    The ``load_url`` remote call takes web addresses only. Every other scheme
+    is answered ``Invalid URL``, including the ``file:`` addresses this tool
+    opens for rendered documents, so asking spends a round trip to be refused
+    and loses the replacement the caller asked for. The answer depends on the
+    scheme alone and never on the document, which is why it is decided here
+    rather than read back out of a failure.
+
+    A profile carries its address in ``Initial URL`` and is not subject to
+    this, so a pane that cannot be navigated is still replaced by closing it
+    and splitting again, which is the path older iTerm2 protocols already use.
+    """
+    return url.lower().startswith(("http://", "https://"))
+
+
 def browser_profile(name, url):
     """Build a browser profile small enough to split a crowded tab."""
     return iterm2.LocalWriteOnlyProfile(
@@ -112,7 +129,7 @@ async def open_document(
             or existing_tab.tab_id != target_tab.tab_id
         ):
             raise DocumentError("tracked browser is not in the anchor's tab")
-        if iterm2.capabilities.supports_load_url(app.connection):
+        if iterm2.capabilities.supports_load_url(app.connection) and navigable(url):
             await existing.async_load_url(url)
             await app.async_refresh()
             # Read this before touching anything: restoring the selection
@@ -142,8 +159,9 @@ async def open_document(
                 "reloaded": True,
             }
 
-        # Older protocol versions cannot navigate an existing browser. Closing
-        # first frees its exact split-tree slot in crowded tabs.
+        # Either the protocol cannot navigate an existing browser, or the
+        # address is not one iTerm2 will navigate to. Closing first frees its
+        # exact split-tree slot in crowded tabs.
         was_showing_the_document = selected_id == existing_id
         await existing.async_close(force=True)
         existing_closed = True
