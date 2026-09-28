@@ -46,6 +46,15 @@ The watcher log is stored at `~/.local/state/iterm-pane/watch.log`. It records l
 - If iTerm repeatedly takes 30 seconds to create a browser pane, inspect the macOS log for `ExceededProcessCountLimit`; restarting browser-heavy apps or signing out clears stale WebKit content processes.
 - The opener deliberately fails if focus or target location changes while the split is running; run it again after navigation stops.
 
+### "document: FAILED: Invalid URL"
+
+Fixed. Re-opening a document that already had a pane asked iTerm2 to navigate
+that pane to the new address, and its `load_url` call accepts `http` and `https`
+only, so every `file:` address, which is what a rendered document is, came back
+`Invalid URL` and the replacement was lost. A rendered document is now replaced
+by closing the pane and splitting again. On an older build the workaround is
+`pane --close <path>` followed by `pane <path>`.
+
 ### "this process is not in the tab named by ITERM_SESSION_ID"
 
 The address is right and the caller is not there. `ITERM_SESSION_ID` is
