@@ -72,7 +72,7 @@ note
 cmp -s "$settings_file" "$records/settings-after.json" || fail "written-bytes record does not match the file"
 note
 mode=$(stat -c '%a' "$records/settings-after.json" 2>/dev/null || stat -f '%Lp' "$records/settings-after.json")
-[ "$((mode & 077))" -eq 0 ] || fail "settings records readable beyond the owner (mode $mode)"
+[ "$((0$mode & 077))" -eq 0 ] || fail "settings records readable beyond the owner (mode $mode)"
 note
 [ -f "$codex_file" ] || fail "codex instructions missing"
 note
