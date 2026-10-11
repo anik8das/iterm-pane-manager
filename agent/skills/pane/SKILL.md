@@ -17,7 +17,7 @@ Write the file first, then run `pane` on its path. Re-running `pane` on the same
 
 ## The refusal rule
 
-A refusal is correct behavior, not an error. If `pane` reports that you are a background job with no visible terminal:
+A refusal is correct behavior, not an error. If `pane` reports that `ITERM_SESSION_ID` is missing, or that this process "is not in the tab named by ITERM_SESSION_ID" (the address was inherited, not earned):
 
 - Do not retry, and never set `PANE_ANCHOR` to claim a tab you are not in.
 - Do not tell the user the tool is broken.

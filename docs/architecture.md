@@ -142,7 +142,7 @@ flowchart LR
     S --> A["sandbox allowlist entry"]
 ```
 
-The runtime never depends on agent wiring. `scripts/install-agent.sh`, opted into with `install.sh --agent-integration`, copies `agent/instructions.md` into `~/.claude/rules/iterm-pane.md`, symlinks the pane skill from `agent/skills/pane` into both agents' skill directories, appends the same instructions to `~/.codex/AGENTS.md` between managed markers, and adds pane's state directory to the sandbox allowlist in `~/.claude/settings.json`. Skill symlinks point into `current`, so a release refresh updates them. Every step is idempotent and ownership-checked: foreign files are refused, `settings.json` is rewritten only when the entry is missing, and `--remove` restores original bytes. `docs/agent-integration.md` is the user-facing manual.
+The runtime never depends on agent wiring. `scripts/install-agent.sh`, opted into with `install.sh --agent-integration`, copies `agent/instructions.md` into `~/.claude/rules/iterm-pane.md`, symlinks the pane skill from `agent/skills/pane` into both agents' skill directories, appends the same instructions to `~/.codex/AGENTS.md` between managed markers, and adds pane's state directory to the sandbox allowlist in `~/.claude/settings.json`. Skill symlinks point into `current`, so a release refresh updates them. Every step is idempotent and ownership-checked: a rules file is replaced only when its first line is the installer's provenance comment, marker pairs must be complete and ordered, `settings.json` is rewritten only when the entry is missing, and `--remove` restores user-owned files byte-for-byte, deleting the allowlist entry only when this installation added it. `docs/agent-integration.md` is the user-facing manual.
 
 ## Failure modes
 
