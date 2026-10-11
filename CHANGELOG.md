@@ -13,6 +13,7 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ### Added
 
+- Agent integration is opt-in: `./scripts/install.sh --agent-integration` installs the pane skill, session instructions, and a sandbox allowlist entry for the coding agents found on the machine, so future sessions render documents with `pane` automatically. `scripts/install-agent.sh` runs or removes just that wiring, removal restores user-owned files byte-for-byte and deletes only what the installer added, and `tests/shell/` covers the round trip.
 - `PANE_ANCHOR` names a target tab deliberately, for callers behind a multiplexer or a remote shell whose terminal is not the tab's own.
 - A browser-independent renderer converts flow, sequence, state, class, entity-relationship, and XY diagrams directly to inline SVG.
 - `pane --doctor` now proves all three required documentation diagram forms with real Mermaid-to-SVG conversions.

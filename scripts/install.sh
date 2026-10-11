@@ -22,6 +22,14 @@ require() {
   command -v "$1" >/dev/null 2>&1 || fail "required command not found: $1"
 }
 
+agent_integration=0
+for arg in "$@"; do
+  case "$arg" in
+    --agent-integration) agent_integration=1 ;;
+    *) fail "unknown option: $arg (supported: --agent-integration)" ;;
+  esac
+done
+
 choose_bin_dir() {
   if [ -n "${ITERM_PANE_BIN_DIR:-}" ]; then
     printf '%s\n' "$ITERM_PANE_BIN_DIR"
@@ -123,6 +131,14 @@ atomic_link "$current_link/bin/mdrender.mjs" "$bin_dir/mdrender"
 "$current_link/bin/pane.mjs" --doctor
 
 trap - EXIT HUP INT TERM
+
+if [ "$agent_integration" -eq 1 ]; then
+  say "Wiring agent integration"
+  if ! ITERM_PANE_INSTALL_ROOT="$install_root" "$script_dir/install-agent.sh"; then
+    say "Agent integration did not complete; the runtime is installed. Re-run scripts/install-agent.sh to retry."
+  fi
+fi
+
 say "Installed iTerm Pane Manager $version"
 say "  pane:     $bin_dir/pane"
 say "  runtime:  $stage"

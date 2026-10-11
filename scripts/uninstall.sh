@@ -2,6 +2,7 @@
 set -eu
 
 install_root=${ITERM_PANE_INSTALL_ROOT:-"$HOME/.local/share/iterm-pane-manager"}
+script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 label=io.github.anik8das.iterm-pane-manager
 domain="gui/$(id -u)"
 
@@ -24,6 +25,12 @@ remove_managed_link /usr/local/bin/pane
 remove_managed_link /usr/local/bin/mdrender
 remove_managed_link "$HOME/.local/bin/pane"
 remove_managed_link "$HOME/.local/bin/mdrender"
+
+if [ -f "$script_dir/install-agent.sh" ]; then
+  if ! ITERM_PANE_INSTALL_ROOT="$install_root" "$script_dir/install-agent.sh" --remove; then
+    printf 'uninstall: agent wiring removal reported an error; re-run scripts/install-agent.sh --remove\n' >&2
+  fi
+fi
 
 case "$install_root" in
   "$HOME/.local/share/iterm-pane-manager") rm -rf -- "$install_root" ;;

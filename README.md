@@ -45,6 +45,31 @@ The installer stages and tests a versioned release before switching the live ins
 
 It starts one per-user macOS background job for focus-safe pane watching. Mermaid diagrams are converted directly to inline SVG without starting or downloading a browser.
 
+### Install with your coding agent
+
+Hand a coding agent this sentence; the repository carries everything the agent needs to finish the job:
+
+```text
+Install this feature on my iTerm: https://github.com/anik8das/iterm-pane-manager
+```
+
+An agent-driven install ends with:
+
+```text
+git clone https://github.com/anik8das/iterm-pane-manager.git
+cd iterm-pane-manager
+./scripts/install.sh --agent-integration
+```
+
+`--agent-integration` additionally wires the coding agents found on the machine, so future sessions render documents with `pane` automatically:
+
+- session instructions in `~/.claude/rules/iterm-pane.md`
+- the pane skill, symlinked into `~/.claude/skills` and `~/.codex/skills`
+- a marked block in `~/.codex/AGENTS.md`
+- one sandbox allowlist entry so `pane` can write its state from sandboxed sessions
+
+Without the flag, only the runtime is installed. What lands where, manual steps, and removal: [Agent integration](docs/agent-integration.md).
+
 ## Use
 
 ```text
@@ -85,10 +110,13 @@ git pull --ff-only
 ./scripts/uninstall.sh
 ```
 
+`./scripts/uninstall.sh` also removes the agent wiring. To remove only the wiring, run `./scripts/install-agent.sh --remove`.
+
 ## Documentation
 
 - [Goals](docs/goals.md)
 - [Architecture](docs/architecture.md)
+- [Agent integration](docs/agent-integration.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
