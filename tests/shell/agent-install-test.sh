@@ -242,7 +242,21 @@ note
 grep -qF 'marker' "$work/markers-remove.err" || fail "out-of-order markers: no removal warning"
 note
 
-# 12. No agent homes: a clean no-op.
+# 12. User prose that quotes the marker text does not widen the stripped
+#     range: only the exact marker lines are removed.
+reset_homes
+printf 'A note about the iterm-pane-manager:begin marker.\n' > "$codex_file"
+cp "$codex_file" "$work/codex.prose.original"
+run_agent > /dev/null
+note
+grep -qF 'begin (managed' "$codex_file" || fail "block missing after prose mention"
+note
+run_agent --remove > /dev/null
+note
+cmp -s "$codex_file" "$work/codex.prose.original" || fail "prose mentioning the marker was not restored byte-exactly"
+note
+
+# 13. No agent homes: a clean no-op.
 out=$(ITERM_PANE_INSTALL_ROOT="$root" \
   ITERM_PANE_AGENT_CLAUDE_HOME="$work/missing-claude" \
   ITERM_PANE_AGENT_CODEX_HOME="$work/missing-codex" \

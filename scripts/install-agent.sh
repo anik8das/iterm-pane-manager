@@ -293,7 +293,10 @@ strip_codex_block() {
     warn "found managed markers that are not a single ordered pair in $target; leaving it unchanged"
     return 1
   fi
-  sed -e '/iterm-pane-manager:begin/,/iterm-pane-manager:end/d' "$target" > "$stripped"
+  # Delete exactly the two full-marker lines. A substring range would also
+  # match prose or a code sample that merely quotes the marker text, and
+  # everything between that mention and the real block would go with it.
+  sed -e "${begin_line},${end_line}d" "$target" > "$stripped"
 }
 
 # Record the boundary state of the user's own content before the first append,
