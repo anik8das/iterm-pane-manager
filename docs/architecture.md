@@ -131,6 +131,19 @@ The installer creates one per-user LaunchAgent named `io.github.anik8das.iterm-p
 
 Versioned releases are stored below `~/.local/share/iterm-pane-manager/releases`. The `current` symlink is changed only after dependencies and tests pass. Watcher startup and `pane --doctor` are the final promotion gates.
 
+## Agent integration
+
+```mermaid
+flowchart LR
+    I["install.sh --agent-integration"] --> S["install-agent.sh"]
+    S --> R["rules file: session instructions"]
+    S --> K["skill symlinks into the release"]
+    S --> B["marked block in the agent instructions file"]
+    S --> A["sandbox allowlist entry"]
+```
+
+The runtime never depends on agent wiring. `scripts/install-agent.sh`, opted into with `install.sh --agent-integration`, copies `agent/instructions.md` into `~/.claude/rules/iterm-pane.md`, symlinks the pane skill from `agent/skills/pane` into both agents' skill directories, appends the same instructions to `~/.codex/AGENTS.md` between managed markers, and adds pane's state directory to the sandbox allowlist in `~/.claude/settings.json`. Skill symlinks point into `current`, so a release refresh updates them. Every step is idempotent and ownership-checked: foreign files are refused, `settings.json` is rewritten only when the entry is missing, and `--remove` restores original bytes. `docs/agent-integration.md` is the user-facing manual.
+
 ## Failure modes
 
 | Failure | Behavior |
