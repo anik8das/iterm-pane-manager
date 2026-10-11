@@ -75,6 +75,22 @@ Render it without opening anything instead:
 mdrender report.md --no-open
 ```
 
+## Links in a document do not open
+
+Rendered documents are served locally, so they render even when the browser
+cannot reach the network. The usual cause is iTerm2's browser proxy: if
+`defaults read com.googlecode.iterm2 BrowserProxyEnabled` prints `1` and
+nothing listens on the configured proxy (default `127.0.0.1:8118`, Privoxy's
+port), every website load in every browser pane hangs while local documents
+keep working.
+
+```sh
+defaults write com.googlecode.iterm2 BrowserProxyEnabled -bool NO
+```
+
+Reopen the pane if it was created before the change. The full diagnosis and the
+experiment that proved it: [browser proxy diagnosis](browser-proxy-blocks-web-loads.md).
+
 ## State file recovery
 
 Invalid JSON is never overwritten automatically. Preserve the broken file first:
