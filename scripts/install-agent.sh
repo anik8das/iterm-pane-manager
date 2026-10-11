@@ -207,15 +207,17 @@ if (allow !== undefined && allow !== null && !Array.isArray(allow)) {
 }
 const list = Array.isArray(settings.sandbox.filesystem.allowWrite) ? settings.sandbox.filesystem.allowWrite : [];
 if (list.includes(entry)) process.exit(0);
-fs.mkdirSync(recordDir, { recursive: true });
+// The records are byte copies of a user config file that can hold
+// credentials, so they are kept owner-only rather than at the default umask.
+fs.mkdirSync(recordDir, { recursive: true, mode: 0o700 });
 if (!fs.existsSync(beforePath) && !fs.existsSync(absentPath)) {
   if (raw === null) fs.writeFileSync(absentPath, "");
-  else fs.writeFileSync(beforePath, raw);
+  else fs.writeFileSync(beforePath, raw, { mode: 0o600 });
 }
 settings.sandbox.filesystem.allowWrite = [...list, entry];
 const next = `${JSON.stringify(settings, null, 2)}\n`;
 fs.writeFileSync(file, next);
-fs.writeFileSync(afterPath, next);
+fs.writeFileSync(afterPath, next, { mode: 0o600 });
 process.stdout.write(`allowlist entry added: ${entry}\n`);
 NODE
 }
