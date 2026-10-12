@@ -59,6 +59,8 @@ grep -qF 'iterm-pane-manager' "$rules_file" || fail "rules provenance missing"
 note
 grep -qF 'pane --doctor' "$rules_file" || fail "rules body missing"
 note
+grep -qF 'hard-wrap' "$rules_file" || fail "rules copy-fidelity rule missing"
+note
 [ -L "$skill_link" ] || fail "skill link missing"
 note
 [ "$(readlink "$skill_link")" = "$skill_target" ] || fail "skill link target wrong"
@@ -79,6 +81,8 @@ note
 grep -qF 'iterm-pane-manager:begin' "$codex_file" || fail "codex begin marker missing"
 note
 grep -qF 'pane --doctor' "$codex_file" || fail "codex body missing"
+note
+grep -qF 'no room left to split' "$codex_file" || fail "codex no-room rule missing"
 note
 [ -L "$codex_skill_link" ] || fail "codex skill link missing"
 note
