@@ -13,7 +13,7 @@ Open a browser pane beside the terminal session that asks for it, exactly on mac
 pane path/to/document.md
 ```
 
-Write the file first, then run `pane` on its path. Re-running `pane` on the same document replaces its existing pane, so refresh as you go. Markdown is rendered to a self-contained HTML page with Mermaid diagrams as inline SVG; `pane doc.md --raw` shows the Markdown as plain text instead.
+Write the file first, then run `pane` on its path. Re-running `pane` on the same document replaces its existing pane, so refresh as you go. Markdown is rendered to a self-contained HTML page with Mermaid diagrams as inline SVG; `pane doc.md --raw` shows the Markdown as plain text instead. The pane is the delivery: after it opens, say in one line what the document covers instead of pasting its contents into the chat. Never hard-wrap inside a fenced block; one logical line stays one line however long it is, because the copy button on every fenced block copies the exact characters and a newline added for looks would land in the user's paste.
 
 ## The refusal rule
 
@@ -63,4 +63,5 @@ If `pane` fails with a permission error writing next to the document, the sandbo
 ## Troubleshooting
 
 - `pane --doctor` distinguishes unavailable probes from real failures; a probe that cannot run is not a broken tool.
+- The tab has no room left to split: pane cannot place the document even after giving up its own oldest panes. Relay the message with the document path and suggest closing a pane in that tab; do not retry.
 - Links inside a rendered document do not open: see the browser-proxy entry in the repository's `docs/troubleshooting.md`.
