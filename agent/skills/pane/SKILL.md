@@ -63,5 +63,5 @@ If `pane` fails with a permission error writing next to the document, the sandbo
 ## Troubleshooting
 
 - `pane --doctor` distinguishes unavailable probes from real failures; a probe that cannot run is not a broken tool.
-- The tab has no room left to split: pane cannot place the document even after giving up its own oldest panes. Relay the message with the document path and name a pane that could be closed; do not retry.
+- The tab has no room left to split: pane cannot place the document even after giving up its own oldest panes. Relay the message with the document path and suggest closing a pane in that tab; do not retry.
 - Links inside a rendered document do not open: see the browser-proxy entry in the repository's `docs/troubleshooting.md`.

@@ -6,6 +6,6 @@ Never hard-wrap inside a fenced block. The rendered page gives every fenced bloc
 
 If `pane` refuses because this process has no tab of its own — it reports that `ITERM_SESSION_ID` is missing, or that this process "is not in the tab named by ITERM_SESSION_ID" — do not retry and do not guess another tab. Say in one line: "Written to `<path>`. To see it, run `pane <path>` in a foreground tab." Never tell the user the tool is broken and never ask them to open the file by hand.
 
-If pane reports the tab has no room left to split, relay that in one line with the document path and name a pane that could be closed; do not retry.
+If pane reports the tab has no room left to split, relay that in one line with the document path and suggest closing a pane in that tab; do not retry.
 
 `pane --doctor` reports health. The `pane` skill has the full behavior contract.
