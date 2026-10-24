@@ -96,7 +96,7 @@ class LayoutTest(unittest.IsolatedAsyncioTestCase):
                 )
             tab = Tab(sessions)
 
-            async def apply_cells():
+            async def apply_cells(sessions=sessions, metrics=metrics):
                 for session, (cw, ch, padw, padh) in zip(sessions, metrics):
                     width, height = session.preferred_size
                     session.grid_size = SimpleNamespace(width=width, height=height)

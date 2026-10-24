@@ -111,9 +111,7 @@ def point_targets(node):
     if not children:
         return (0, 0), []
     axis = 0 if node.vertical else 1
-    units = [
-        max(child[0][dimension] for child in children) for dimension in (0, 1)
-    ]
+    units = [max(child[0][dimension] for child in children) for dimension in (0, 1)]
     units[axis] = sum(child[0][axis] for child in children)
     leaves = [item for _, targets in children for item in targets]
     actual = [item[0] for item in leaves]
@@ -128,12 +126,12 @@ def point_targets(node):
     targets = []
     for child_units, child_targets in children:
         sessions = [item[0] for item in child_targets]
-        child_width = max(s.frame.origin.x + s.frame.size.width for s in sessions) - min(
-            s.frame.origin.x for s in sessions
-        )
-        child_height = max(s.frame.origin.y + s.frame.size.height for s in sessions) - min(
-            s.frame.origin.y for s in sessions
-        )
+        child_width = max(
+            s.frame.origin.x + s.frame.size.width for s in sessions
+        ) - min(s.frame.origin.x for s in sessions)
+        child_height = max(
+            s.frame.origin.y + s.frame.size.height for s in sessions
+        ) - min(s.frame.origin.y for s in sessions)
         targets.append((child_units, child_targets, child_width, child_height))
     gap = (width if axis == 0 else height) - sum(item[2 + axis] for item in targets)
     result = []
