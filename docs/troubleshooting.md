@@ -24,6 +24,18 @@ pane --watch-status
 - Zoomed panes and tmux tabs are skipped intentionally.
 - Run `pane --even` to test the one-shot path separately from the watcher.
 
+### Browser panes remain narrow after a split
+
+Older releases request the same grid dimensions for every pane. iTerm2 uses
+font cells for terminals and point-sized cells for browsers, so equal grid
+counts do not mean equal visible widths. The mismatch can appear on any
+screen size, and oversized requests are constrained by the available screen.
+
+The watcher now allocates physical shares through the existing split tree
+and converts them into each session's own grid units. Refreshed measurements correct rounding and pane decorations
+on later sweeps. Update and reinstall the runtime, then create a document pane
+and check that the selected tab converges to equal widths.
+
 ## Focus changes unexpectedly
 
 Pause automatic evening immediately:
