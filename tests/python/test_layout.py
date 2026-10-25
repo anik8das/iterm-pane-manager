@@ -133,6 +133,9 @@ class LayoutTest(unittest.IsolatedAsyncioTestCase):
         root.add_child(c)
         _, targets = layout.point_targets(root)
         self.assertEqual(len(targets), 3)
+        self.assertEqual(
+            [session.session_id for session, _, _ in targets], ["a", "b", "c"]
+        )
         for (_, width, height), (want_width, want_height) in zip(
             targets, [(500, 349.5), (500, 349.5), (500, 700)]
         ):
