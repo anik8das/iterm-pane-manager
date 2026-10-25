@@ -125,6 +125,16 @@ class FocusSafeWatcherTest(unittest.IsolatedAsyncioTestCase):
             await self.watcher.sweep("focus")
         self.assertEqual(self.visible_sessions[0].activations, [(False, False)])
 
+    async def test_deferred_evening_is_retried_on_the_next_sweep(self):
+        with self.layout_patches():
+            watch.layout.even_tab.side_effect = None
+            watch.layout.even_tab.return_value = None
+            await self.watcher.sweep("focus")
+            self.assertFalse(self.watcher.seen[self.visible.tab_id]["settled"])
+            watch.layout.even_tab.return_value = True
+            await self.watcher.sweep("focus")
+            self.assertEqual(watch.layout.even_tab.await_count, 2)
+
     def test_watcher_cannot_manage_documents(self):
         source = inspect.getsource(watch)
         for forbidden in (
