@@ -2,7 +2,6 @@
 
 import iterm2
 
-SHARE = 1000
 TOLERANCE = 12.0
 
 
@@ -99,11 +98,85 @@ def needs_evening(tab, window_content, tolerance=TOLERANCE):
     return None
 
 
+def _span(sessions):
+    """Return the width and height covered by the given sessions."""
+    return (
+        max(s.frame.origin.x + s.frame.size.width for s in sessions)
+        - min(s.frame.origin.x for s in sessions),
+        max(s.frame.origin.y + s.frame.size.height for s in sessions)
+        - min(s.frame.origin.y for s in sessions),
+    )
+
+
+def point_targets(node):
+    """Allocate the existing split-tree extent using equal leaf-size units.
+
+    Sum units along a split and take their maximum across it. Thus a column
+    with two stacked panes has the same width as a single neighboring pane,
+    without forcing that neighbor to half height. Preserve measured dividers.
+    """
+    if not isinstance(node, iterm2.Splitter):
+        return (1, 1), [(node, node.frame.size.width, node.frame.size.height)]
+    children = [point_targets(child) for child in node.children]
+    if not children:
+        return (0, 0), []
+    axis = 0 if node.vertical else 1
+    units = [max(child[0][dimension] for child in children) for dimension in (0, 1)]
+    units[axis] = sum(child[0][axis] for child in children)
+    leaves = [item for _, targets in children for item in targets]
+    width, height = _span([item[0] for item in leaves])
+    # Each child's targets already include its internal dividers. Recover that
+    # child's extent from its measured leaves when allocating its new share.
+    targets = []
+    for child_units, child_targets in children:
+        child_width, child_height = _span([item[0] for item in child_targets])
+        targets.append((child_units, child_targets, child_width, child_height))
+    gap = (width if axis == 0 else height) - sum(item[2 + axis] for item in targets)
+    result = []
+    for child_units, child_targets, child_width, child_height in targets:
+        desired = [width, height]
+        available = (width if axis == 0 else height) - gap
+        desired[axis] = available * child_units[axis] / units[axis]
+        for session, pane_width, pane_height in child_targets:
+            result.append(
+                (
+                    session,
+                    pane_width * desired[0] / child_width,
+                    pane_height * desired[1] / child_height,
+                )
+            )
+    return tuple(units), result
+
+
 async def even_tab(tab):
-    """Request equal preferred sizes for every visible pane in a tab."""
+    """Convert equal physical shares to each pane's own grid units.
+
+    Preferred sizes are cell counts, not weights. Browser grids use points,
+    while terminal grids use font cells, which can differ between profiles.
+    Refreshed watcher sweeps correct rounding and pane decorations.
+    """
     if skip_reason(tab):
         return None
     for session in tab.sessions:
-        session.preferred_size = iterm2.Size(SHARE, SHARE)
+        size = session.frame.size
+        grid = session.grid_size
+        if min(size.width, size.height, grid.width, grid.height) <= 0:
+            return None  # A split may still be acquiring its initial geometry.
+    _, targets = point_targets(tab.root)
+    preferences = []
+    for session, target_width, target_height in targets:
+        size = session.frame.size
+        grid = session.grid_size
+        preferences.append(
+            (
+                session,
+                iterm2.Size(
+                    max(1, round(grid.width * target_width / size.width)),
+                    max(1, round(grid.height * target_height / size.height)),
+                ),
+            )
+        )
+    for session, preferred in preferences:
+        session.preferred_size = preferred
     await tab.async_update_layout()
     return True

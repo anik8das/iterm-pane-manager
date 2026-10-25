@@ -132,10 +132,15 @@ class Watcher:
         focused_session = (
             tab.current_session.session_id if tab.current_session else None
         )
+        deferred = set()
         for candidate, _why, _wrong, _before, session_ids in work:
             if layout.session_ids(candidate) != session_ids:
                 continue
-            await asyncio.wait_for(layout.even_tab(candidate), timeout=RPC_TIMEOUT)
+            applied = await asyncio.wait_for(
+                layout.even_tab(candidate), timeout=RPC_TIMEOUT
+            )
+            if applied is None:
+                deferred.add(candidate.tab_id)
 
         await asyncio.wait_for(self.app.async_refresh(), timeout=RPC_TIMEOUT)
         tabs_by_id = {
@@ -162,7 +167,7 @@ class Watcher:
                 continue
             after = layout.signature(fresh)
             stuck = after == before
-            self.remember(fresh, settled=stuck)
+            self.remember(fresh, settled=stuck and candidate.tab_id not in deferred)
             moved = moved or not stuck
             widths = "x".join(
                 str(width)
