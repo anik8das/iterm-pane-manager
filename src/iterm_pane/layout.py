@@ -98,6 +98,16 @@ def needs_evening(tab, window_content, tolerance=TOLERANCE):
     return None
 
 
+def _span(sessions):
+    """Return the width and height covered by the given sessions."""
+    return (
+        max(s.frame.origin.x + s.frame.size.width for s in sessions)
+        - min(s.frame.origin.x for s in sessions),
+        max(s.frame.origin.y + s.frame.size.height for s in sessions)
+        - min(s.frame.origin.y for s in sessions),
+    )
+
+
 def point_targets(node):
     """Allocate the existing split-tree extent using equal leaf-size units.
 
@@ -114,24 +124,12 @@ def point_targets(node):
     units = [max(child[0][dimension] for child in children) for dimension in (0, 1)]
     units[axis] = sum(child[0][axis] for child in children)
     leaves = [item for _, targets in children for item in targets]
-    actual = [item[0] for item in leaves]
-    width = max(s.frame.origin.x + s.frame.size.width for s in actual) - min(
-        s.frame.origin.x for s in actual
-    )
-    height = max(s.frame.origin.y + s.frame.size.height for s in actual) - min(
-        s.frame.origin.y for s in actual
-    )
+    width, height = _span([item[0] for item in leaves])
     # Each child's targets already include its internal dividers. Recover that
     # child's extent from its measured leaves when allocating its new share.
     targets = []
     for child_units, child_targets in children:
-        sessions = [item[0] for item in child_targets]
-        child_width = max(
-            s.frame.origin.x + s.frame.size.width for s in sessions
-        ) - min(s.frame.origin.x for s in sessions)
-        child_height = max(
-            s.frame.origin.y + s.frame.size.height for s in sessions
-        ) - min(s.frame.origin.y for s in sessions)
+        child_width, child_height = _span([item[0] for item in child_targets])
         targets.append((child_units, child_targets, child_width, child_height))
     gap = (width if axis == 0 else height) - sum(item[2 + axis] for item in targets)
     result = []
