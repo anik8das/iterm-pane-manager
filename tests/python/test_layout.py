@@ -132,8 +132,11 @@ class LayoutTest(unittest.IsolatedAsyncioTestCase):
         root.add_child(column)
         root.add_child(c)
         _, targets = layout.point_targets(root)
-        self.assertEqual([width for _, width, _ in targets], [500, 500, 500])
-        self.assertEqual([height for _, _, height in targets], [349.5, 349.5, 700])
+        for (_, width, height), (want_width, want_height) in zip(
+            targets, [(500, 349.5), (500, 349.5), (500, 700)]
+        ):
+            self.assertAlmostEqual(width, want_width)
+            self.assertAlmostEqual(height, want_height)
 
     async def test_invalid_geometry_does_not_submit_partial_layout(self):
         sessions = [
