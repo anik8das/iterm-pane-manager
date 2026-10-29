@@ -71,4 +71,15 @@ if grep -qiE "$blocked_pattern" "$0"; then
   fail "this test matches the blocked pattern"
 fi
 
+fixture=$(mktemp -d "${TMPDIR:-/tmp}/pane-source-check.XXXXXX")
+trap 'rm -rf -- "$fixture"' EXIT HUP INT TERM
+printf 'gitdir: /%s/example/repository/.git/worktrees/task\n' 'Users' > "$fixture/.git"
+printf 'ordinary source\n' > "$fixture/tracked.mjs"
+check_source_tree "$fixture" || fail "worktree metadata was scanned as source"
+printf '/%s/example/private\n' 'Users' > "$fixture/tracked.mjs"
+if check_source_tree "$fixture" >/dev/null 2>&1; then fail "source path was not rejected"; fi
+printf 'ordinary source\n' > "$fixture/tracked.mjs"
+printf 'gh%s_exampletoken\n' 'o' > "$fixture/untracked.txt"
+if check_source_tree "$fixture" >/dev/null 2>&1; then fail "untracked credential-shaped token was not rejected"; fi
+
 printf 'blocked-patterns-test: OK\n'

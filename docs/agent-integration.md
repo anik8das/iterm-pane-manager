@@ -36,6 +36,7 @@ flowchart TB
 | pane skill | `~/.claude/skills/pane`, `~/.codex/skills/pane` | symlink into `current/agent/skills/pane` | removed only when the link points into the pane install |
 | session instructions | `~/.codex/AGENTS.md` | body of `agent/instructions.md` between the `iterm-pane-manager:begin` and `:end` markers | removing between the markers restores the original bytes |
 | sandbox allowlist | `~/.claude/settings.json` | `$HOME/.local/state/iterm-pane` added to `sandbox.filesystem.allowWrite`, rewritten only when the entry is actually missing | removed only when this installer added the entry; a file untouched since installation is restored byte-for-byte |
+| foreground launch routing | `${ZDOTDIR:-$HOME}/.zshrc` | owned marker block when the installed command supports `--no-daemon`; interactive terminal launches retain their own process ancestry | original bytes restored when unchanged; otherwise only the owned block is removed |
 
 Only an agent home that already exists is touched. A path already holding foreign content (a rules file whose first line is not the installer's provenance comment, a mismatched marker pair, a symlink pointing outside the install, or a directory that is not ours) is left in place with a warning. `settings.json` that does not parse is left untouched with the snippet printed. Removal restores user-owned files byte-for-byte: an allowlist entry that predates the installer is never deleted, and settings edited after installation keep those edits.
 
@@ -55,6 +56,13 @@ Used mainly by `tests/shell/agent-install-test.sh`:
 - `ITERM_PANE_INSTALL_ROOT`: the installed runtime (default `~/.local/share/iterm-pane-manager`)
 - `ITERM_PANE_AGENT_CLAUDE_HOME`: default `~/.claude`
 - `ITERM_PANE_AGENT_CODEX_HOME`: default `~/.codex`
+- `ITERM_PANE_AGENT_SHELL_RC`: override the shell startup file for installation fixtures
+
+Foreground routing applies to newly started interactive sessions. It preserves
+explicit remote execution, service commands, help, existing execution flags, and
+noninteractive callers. Each foreground session has its own helper processes;
+the shared command service is left running for uses that need it. Existing
+user-defined launch functions and aliases are preserved.
 
 ## Troubleshooting
 

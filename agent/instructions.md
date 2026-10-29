@@ -9,3 +9,5 @@ If `pane` refuses because this process has no tab of its own — it reports that
 If pane reports the tab has no room left to split, relay that in one line with the document path and suggest closing a pane in that tab; do not retry.
 
 `pane --doctor` reports health. The `pane` skill has the full behavior contract.
+
+A command service can carry an expired tab address even while its session is displayed in a visible terminal. Report that distinction accurately; do not claim the visible session has no tab. Restored foreground sessions are recovered only by a unique verified terminal device; shared-service launches use the installed foreground integration. Never guess an anchor. `CANNOT_SPLIT` is a terminal rejection, not proof of insufficient space: relay its measured context and original error. Existing documents are retained when delivery fails before it is recorded.

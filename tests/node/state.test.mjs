@@ -27,6 +27,15 @@ test("invalid JSON fails loudly", () => {
   assert.throws(() => decodeState("{"), StateError);
 });
 
+test("unfinished retirement survives reload and rejects malformed pane identities", () => {
+  const entry = { anchor: "a", url: "file:///doc.html", profile: "pane doc", session: "new", previous: "old", retiring: { old: "pane doc" } };
+  const decode = (document) => decodeState(JSON.stringify({ version: 1, documents: { doc: document } })).state.documents.doc;
+  assert.deepEqual(decode(entry).retiring, { old: "pane doc" });
+  assert.equal(decode(entry).previous, "old");
+  assert.throws(() => decode({ ...entry, retiring: ["old"] }), StateError);
+  assert.throws(() => decode({ ...entry, retiring: { old: 42 } }), StateError);
+});
+
 test("legacy state migrates without queue fields", () => {
   const legacy = {
     "anchor::file:///doc.html": {
@@ -97,4 +106,12 @@ test("pruning removes dead anchors and browser sessions", () => {
   };
   assert.equal(pruneState(state, new Set(["a", "b"])), true);
   assert.deepEqual(Object.keys(state.documents), ["live"]);
+});
+
+test("closing an interrupted replacement restores tracking of its retained predecessor", () => {
+  const state = emptyState();
+  state.documents.doc = { anchor: "a", url: "file:///doc.html", profile: "pane doc", session: "new", previous: "old", retiring: { old: "pane doc" } };
+  assert.equal(pruneState(state, new Set(["a", "old"])), true);
+  assert.equal(state.documents.doc.session, "old");
+  assert.equal(state.documents.doc.retiring, undefined);
 });

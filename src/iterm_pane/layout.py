@@ -3,6 +3,12 @@
 import iterm2
 
 TOLERANCE = 12.0
+# Native browser minimum in the terminal's split-layout implementation.
+MIN_BROWSER_WIDTH = 395.0
+
+
+class LayoutConstraintError(ValueError):
+    """Equal sizing would violate a native pane minimum."""
 
 
 def frames(tab):
@@ -69,6 +75,14 @@ def session_ids(tab):
     return frozenset(session.session_id for session in tab.sessions)
 
 
+def column_count(node):
+    """Count equal-width units without requiring settled frame geometry."""
+    if not isinstance(node, iterm2.Splitter):
+        return 1
+    counts = [column_count(child) for child in node.children]
+    return sum(counts) if node.vertical else max(counts, default=0)
+
+
 def skip_reason(tab):
     """Explain why a tab must not be resized, or return ``None``."""
     if len(tab.sessions) < 2:
@@ -82,9 +96,21 @@ def skip_reason(tab):
 
 def needs_evening(tab, window_content, tolerance=TOLERANCE):
     """Explain why a tab needs resizing, or return ``None``."""
-    width_spread, height_spread = spreads(tab)
-    if width_spread > tolerance or height_spread > tolerance:
-        return f"uneven by {max(width_spread, height_spread):.0f}pt"
+    if any(width <= 0 or height <= 0 for _x, _y, width, height in frames(tab)):
+        return "pane geometry is pending"
+    _, targets = point_targets(tab.root)
+    deviation = max(
+        (
+            max(
+                abs(session.frame.size.width - width),
+                abs(session.frame.size.height - height),
+            )
+            for session, width, height in targets
+        ),
+        default=0,
+    )
+    if deviation * 2 > tolerance:
+        return f"off target by {deviation:.0f}pt"
 
     extent_width, extent_height = extent(tab)
     if (
@@ -148,7 +174,7 @@ def point_targets(node):
     return tuple(units), result
 
 
-async def even_tab(tab):
+async def even_tab(tab, *, allowed=None):
     """Convert equal physical shares to each pane's own grid units.
 
     Preferred sizes are cell counts, not weights. Browser grids use points,
@@ -165,18 +191,30 @@ async def even_tab(tab):
     _, targets = point_targets(tab.root)
     preferences = []
     for session, target_width, target_height in targets:
+        if target_width < MIN_BROWSER_WIDTH:
+            profile = await session.async_get_profile()
+            if profile.all_properties.get("Custom Command") == "Browser":
+                raise LayoutConstraintError(
+                    f"equal columns would be {target_width:.0f}pt wide; "
+                    f"browser panes require {MIN_BROWSER_WIDTH:g}pt"
+                )
         size = session.frame.size
         grid = session.grid_size
         preferences.append(
             (
                 session,
-                iterm2.Size(
-                    max(1, round(grid.width * target_width / size.width)),
-                    max(1, round(grid.height * target_height / size.height)),
-                ),
+                max(1, round(grid.width * target_width / size.width)),
+                max(1, round(grid.height * target_height / size.height)),
             )
         )
-    for session, preferred in preferences:
-        session.preferred_size = preferred
+    if allowed is not None and not allowed():
+        return None
+    if all(
+        width == session.grid_size.width and height == session.grid_size.height
+        for session, width, height in preferences
+    ):
+        return False
+    for session, width, height in preferences:
+        session.preferred_size = iterm2.Size(width, height)
     await tab.async_update_layout()
     return True

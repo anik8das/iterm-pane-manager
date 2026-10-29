@@ -19,7 +19,7 @@
   },
   "scripts": {
     "audit": "npm audit --omit=dev",
-    "check": "node --check bin/pane.mjs && node --check bin/mdrender.mjs && for f in src/node/*.mjs; do node --check \"$f\" || exit 1; done",
+    "check": "node --check bin/pane.mjs && node --check bin/mdrender.mjs && for f in src/node/*.mjs agent/*.mjs; do node --check \"$f\" || exit 1; done",
     "lint": "eslint .",
     "test": "node --test tests/node/*.test.mjs"
   },

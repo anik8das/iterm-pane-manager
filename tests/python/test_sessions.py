@@ -14,11 +14,12 @@ class Session:
         self.tty = tty
         self.profile_name = profile_name
         self.raises = False
+        self.pid = None
 
     async def async_get_variable(self, name):
         if self.raises:
             raise RuntimeError("variable unavailable")
-        return self.tty if name == "tty" else None
+        return self.tty if name == "tty" else self.pid if name == "pid" else None
 
     async def async_get_profile(self):
         return types.SimpleNamespace(name=self.profile_name)
@@ -99,6 +100,32 @@ class SessionsTest(unittest.IsolatedAsyncioTestCase):
         self.session.raises = True
         _code, payload = await self.status("code-pane")
         self.assertIsNone(payload["tty"])
+
+    async def test_a_restored_session_resolves_its_native_process_device(self):
+        self.session.tty = None
+        self.session.pid = 123
+        process = types.SimpleNamespace(
+            returncode=0, communicate=mock.AsyncMock(return_value=(b"ttys012\n", None))
+        )
+        with mock.patch.object(
+            sessions.asyncio, "create_subprocess_exec", return_value=process
+        ):
+            _code, payload = await self.status("code-pane")
+        self.assertEqual(payload["tty"], "/dev/ttys012")
+
+    async def test_device_resolution_requires_one_native_session(self):
+        args = types.SimpleNamespace(command="resolve", tty="ttys012")
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            await sessions.main(object(), args)
+        self.assertEqual(json.loads(output.getvalue())["session"], "code-pane")
+        self.app.windows[0].tabs[0].all_sessions.append(Session("ambiguous"))
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            await sessions.main(object(), args)
+        self.assertEqual(
+            json.loads(output.getvalue()), {"exists": False, "ambiguous": True}
+        )
 
     async def test_recovery_finds_only_new_matching_panes_in_the_anchor_tab(self):
         prior = Session("prior-browser", profile_name="pane document marker")

@@ -5,6 +5,7 @@ import unittest
 from unittest import mock
 
 import document
+import sessions
 
 
 class Session:
@@ -147,10 +148,11 @@ class DocumentTest(unittest.IsolatedAsyncioTestCase):
                 receipt.read_text(encoding="utf-8"), self.created.session_id
             )
 
-    async def test_replacement_reuses_existing_layout_slot(self):
+    async def test_replacement_retains_old_browser_until_committed(self):
         old = Session("browser-old")
         old.app = self.app
         old.tab = self.hidden
+        old.split_created = self.created
         self.hidden.sessions.append(old)
         result = await document.open_document(
             self.app,
@@ -161,19 +163,16 @@ class DocumentTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result["session"], self.created.session_id)
         self.assertTrue(result["reopened"])
-        self.assertTrue(old.closed)
+        self.assertFalse(old.closed)
         self.assertEqual(self.hidden.current_session, self.anchor)
-        # One round trip to see the tab after the old pane closed, and one to
-        # ask where the person is before touching the selection. The second is
-        # bought deliberately: the answer decides whether a pane moves under
-        # someone, and a stale answer is the wrong one.
-        self.assertEqual(self.app.refresh_count, 2)
+        self.assertEqual(self.app.refresh_count, 1)
 
     async def test_newer_protocol_reloads_existing_browser(self):
         document.iterm2.capabilities.supports_load_url.return_value = True
         old = Session("browser-old")
         old.app = self.app
         old.tab = self.hidden
+        old.split_created = self.created
         self.hidden.sessions.append(old)
         result = await document.open_document(
             self.app,
@@ -198,6 +197,7 @@ class DocumentTest(unittest.IsolatedAsyncioTestCase):
         old = Session("browser-old")
         old.app = self.app
         old.tab = self.hidden
+        old.split_created = self.created
         self.hidden.sessions.append(old)
         result = await document.open_document(
             self.app,
@@ -207,10 +207,82 @@ class DocumentTest(unittest.IsolatedAsyncioTestCase):
             old.session_id,
         )
         self.assertEqual(old.loaded_urls, [])
-        self.assertTrue(old.closed)
+        self.assertFalse(old.closed)
         self.assertEqual(result["session"], self.created.session_id)
         self.assertTrue(result["reopened"])
         self.assertEqual(result["target_tab"], self.hidden.tab_id)
+
+    async def test_split_failure_keeps_the_previous_document(self):
+        old = Session("browser-old")
+        old.app, old.tab = self.app, self.hidden
+        self.hidden.sessions.append(old)
+        old.async_split_pane = mock.AsyncMock(side_effect=RuntimeError("CANNOT_SPLIT"))
+        with self.assertRaisesRegex(RuntimeError, "CANNOT_SPLIT"):
+            await document.open_document(
+                self.app,
+                self.anchor.session_id,
+                "file:///doc.html",
+                "doc",
+                old.session_id,
+            )
+        self.assertFalse(old.closed)
+        self.assertIn(old, self.hidden.sessions)
+
+    async def test_retirement_checks_browser_ownership_and_reading_selection(self):
+        old, other = Session("browser-old"), Session("browser-other")
+        for pane in (old, other, self.created):
+            pane.app, pane.tab = self.app, self.hidden
+            pane.async_get_profile = mock.AsyncMock(
+                return_value=mock.Mock(name="profile")
+            )
+            profile = pane.async_get_profile.return_value
+            profile.name = "pane owned"
+            profile.all_properties = {"Custom Command": "Browser"}
+            self.hidden.sessions.append(pane)
+        self.hidden.current_session = other
+        result = await sessions.retire_documents(
+            self.app,
+            self.anchor.session_id,
+            self.created.session_id,
+            old.session_id,
+            {
+                old.session_id: "pane owned",
+                other.session_id: "pane owned",
+                self.anchor.session_id: "Default",
+            },
+        )
+        self.assertEqual(result["closed"], [old.session_id])
+        self.assertEqual(len(result["kept"]), 2)
+        self.assertFalse(other.closed)
+        self.assertFalse(self.anchor.closed)
+
+    async def test_retirement_replaces_the_selected_document_without_selecting_tab(
+        self,
+    ):
+        old = Session("browser-old")
+        old.app, old.tab = self.app, self.hidden
+        old.async_get_profile = mock.AsyncMock(
+            return_value=type(
+                "Profile",
+                (),
+                {"name": "pane owned", "all_properties": {"Custom Command": "Browser"}},
+            )()
+        )
+        self.hidden.sessions.append(old)
+        self.created.app, self.created.tab = self.app, self.hidden
+        self.hidden.sessions.append(self.created)
+        self.hidden.current_session = old
+        before = document.identity(self.app)
+        result = await sessions.retire_documents(
+            self.app,
+            self.anchor.session_id,
+            self.created.session_id,
+            old.session_id,
+            {old.session_id: "pane owned"},
+        )
+        self.assertEqual(result["closed"], [old.session_id])
+        self.assertEqual(self.created.activations, [(False, False)])
+        self.assertEqual(document.identity(self.app), before)
 
     async def test_navigable_accepts_web_addresses_only(self):
         self.assertTrue(document.navigable("http://example.com/"))
@@ -318,6 +390,7 @@ class DocumentTest(unittest.IsolatedAsyncioTestCase):
         old = Session("browser-old")
         old.app = self.app
         old.tab = self.hidden
+        old.split_created = self.created
         self.hidden.sessions.append(old)
         sibling = Session("hidden-sibling")
         sibling.app = self.app

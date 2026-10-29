@@ -3,6 +3,7 @@
 
 import argparse
 import asyncio
+import json
 import os
 import sys
 import time
@@ -24,6 +25,37 @@ def log(message):
 
 def paused():
     return os.path.exists(PAUSE_FILE)
+
+
+def layout_busy():
+    """Leave a live command's split and retirement sequence undisturbed."""
+    lock = os.path.join(STATE_DIR, "state.json.lock")
+    try:
+        with open(os.path.join(lock, "owner.json"), encoding="utf-8") as file:
+            owner = json.load(file)
+        pid = owner["pid"]
+        if not isinstance(pid, int) or pid < 1:
+            raise ValueError("invalid pane lock owner")
+    except FileNotFoundError:
+        try:
+            return time.time() - os.stat(lock).st_mtime < 60
+        except FileNotFoundError:
+            return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+async def request(operation, stage):
+    """Bound terminal calls and retain the failing operation in diagnostics."""
+    try:
+        return await asyncio.wait_for(operation, timeout=RPC_TIMEOUT)
+    except asyncio.TimeoutError as error:
+        raise TimeoutError(f"{stage} exceeded {RPC_TIMEOUT:g}s") from error
 
 
 class Watcher:
@@ -68,7 +100,7 @@ class Watcher:
         return window, window.current_tab
 
     async def sweep(self, reason):
-        await asyncio.wait_for(self.app.async_refresh(), timeout=RPC_TIMEOUT)
+        await request(self.app.async_refresh(), "refresh before sizing")
 
         if paused():
             if not self.was_paused:
@@ -81,6 +113,8 @@ class Watcher:
         if self.was_paused:
             log("resumed")
             self.was_paused = False
+        if layout_busy():
+            return
 
         active = self.active_tab()
         if active is None:
@@ -133,16 +167,31 @@ class Watcher:
             tab.current_session.session_id if tab.current_session else None
         )
         deferred = set()
+        applied_tabs = set()
         for candidate, _why, _wrong, _before, session_ids in work:
             if layout.session_ids(candidate) != session_ids:
+                deferred.add(candidate.tab_id)
                 continue
-            applied = await asyncio.wait_for(
-                layout.even_tab(candidate), timeout=RPC_TIMEOUT
-            )
+            try:
+                applied = await request(
+                    layout.even_tab(
+                        candidate,
+                        allowed=lambda target=candidate: (
+                            self.active_tab() == (window, target) and not layout_busy()
+                        ),
+                    ),
+                    "apply layout",
+                )
+            except layout.LayoutConstraintError as error:
+                self.remember(candidate, settled=True)
+                log(f"{reason}: tab {candidate.tab_id}: {error}; layout retained")
+                return
             if applied is None:
                 deferred.add(candidate.tab_id)
+            elif applied is True:
+                applied_tabs.add(candidate.tab_id)
 
-        await asyncio.wait_for(self.app.async_refresh(), timeout=RPC_TIMEOUT)
+        await request(self.app.async_refresh(), "refresh after sizing")
         tabs_by_id = {
             current.tab_id: current
             for current_window in self.app.windows
@@ -150,13 +199,21 @@ class Watcher:
         }
 
         current = self.active_tab()
-        if focused_session and current and current[1].tab_id == tab.tab_id:
+        if (
+            tab.tab_id in applied_tabs
+            and focused_session
+            and current
+            and current[1].tab_id == tab.tab_id
+        ):
             selected = current[1].current_session
             if selected and selected.session_id != focused_session:
                 original = self.app.get_session_by_id(focused_session)
                 if original:
-                    await original.async_activate(
-                        select_tab=False, order_window_front=False
+                    await request(
+                        original.async_activate(
+                            select_tab=False, order_window_front=False
+                        ),
+                        "restore pane selection",
                     )
 
         moved = False
@@ -201,7 +258,7 @@ class Watcher:
             return True
         except (iterm2.rpc.RPCException, asyncio.TimeoutError) as error:
             detail = str(error) or type(error).__name__
-            log(f"{reason}: tab changed under the sweep ({detail}); will retry")
+            log(f"{reason}: sweep failed ({detail}); will reassess on the next event")
             return False
 
     async def run(self, wake):
@@ -211,13 +268,17 @@ class Watcher:
                 await asyncio.wait_for(wake.wait(), timeout=self.options.interval)
                 reason = "focus" if self.focus_pending else "event"
                 if reason != "focus":
-                    while True:
+                    deadline = (
+                        asyncio.get_running_loop().time()
+                        + self.options.debounce / 1000.0
+                    )
+                    while not self.focus_pending:
                         wake.clear()
+                        remaining = deadline - asyncio.get_running_loop().time()
+                        if remaining <= 0:
+                            break
                         try:
-                            await asyncio.wait_for(
-                                wake.wait(),
-                                timeout=self.options.debounce / 1000.0,
-                            )
+                            await asyncio.wait_for(wake.wait(), timeout=remaining)
                         except asyncio.TimeoutError:
                             break
             except asyncio.TimeoutError:

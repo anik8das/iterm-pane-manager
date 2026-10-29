@@ -39,6 +39,7 @@ run_agent() {
   ITERM_PANE_INSTALL_ROOT="$root" \
     ITERM_PANE_AGENT_CLAUDE_HOME="$claude" \
     ITERM_PANE_AGENT_CODEX_HOME="$codex" \
+    ITERM_PANE_AGENT_SHELL_RC="$work/shellrc" \
     sh "$repo_root/scripts/install-agent.sh" "$@"
 }
 

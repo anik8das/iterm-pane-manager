@@ -64,6 +64,7 @@ class EvenFocusTest(unittest.IsolatedAsyncioTestCase):
 
         async def resize(candidate):
             candidate.current_session = second
+            return True
 
         with (
             mock.patch.object(even.iterm2, "async_get_app", return_value=app),

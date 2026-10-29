@@ -1,5 +1,7 @@
 import argparse
 import inspect
+import os
+import tempfile
 import unittest
 from unittest import mock
 
@@ -59,6 +61,15 @@ def options():
 
 class FocusSafeWatcherTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        for name, value in [
+            ("STATE_DIR", temporary.name),
+            ("PAUSE_FILE", os.path.join(temporary.name, "paused")),
+        ]:
+            patcher = mock.patch.object(watch, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
         self.visible_sessions = [Session("visible-a"), Session("visible-b")]
         self.hidden_sessions = [Session("hidden-a"), Session("hidden-b")]
         self.visible = Tab("visible", self.visible_sessions)
@@ -68,7 +79,7 @@ class FocusSafeWatcherTest(unittest.IsolatedAsyncioTestCase):
         self.watcher = watch.Watcher(self.app, options())
 
     def layout_patches(self, even_side_effect=None, needs="uneven by 100pt"):
-        async def even(tab):
+        async def even(tab, **_kwargs):
             if even_side_effect:
                 even_side_effect(tab)
             return True
@@ -96,7 +107,8 @@ class FocusSafeWatcherTest(unittest.IsolatedAsyncioTestCase):
     async def test_focus_sweep_evens_only_visible_tab(self):
         with self.layout_patches():
             await self.watcher.sweep("focus")
-            watch.layout.even_tab.assert_awaited_once_with(self.visible)
+            watch.layout.even_tab.assert_awaited_once()
+            self.assertIs(watch.layout.even_tab.await_args.args[0], self.visible)
 
     async def test_equal_selected_tab_is_read_only(self):
         with self.layout_patches(needs=None):
@@ -109,13 +121,22 @@ class FocusSafeWatcherTest(unittest.IsolatedAsyncioTestCase):
             await self.watcher.sweep("event")
             watch.layout.even_tab.assert_not_awaited()
 
+    async def test_a_live_delivery_lock_prevents_competing_resizes(self):
+        with (
+            self.layout_patches(),
+            mock.patch.object(watch, "layout_busy", return_value=True),
+        ):
+            await self.watcher.sweep("event")
+            watch.layout.even_tab.assert_not_awaited()
+
     async def test_pane_count_change_is_evened_once(self):
         with self.layout_patches(needs=None):
             self.watcher.remember(self.visible)
             self.visible.sessions.append(Session("visible-c"))
             self.visible.all_sessions = self.visible.sessions
             await self.watcher.sweep("event")
-            watch.layout.even_tab.assert_awaited_once_with(self.visible)
+            watch.layout.even_tab.assert_awaited_once()
+            self.assertIs(watch.layout.even_tab.await_args.args[0], self.visible)
 
     async def test_evening_restores_pane_without_selecting_tab(self):
         def select_sibling(tab):
@@ -134,6 +155,22 @@ class FocusSafeWatcherTest(unittest.IsolatedAsyncioTestCase):
             watch.layout.even_tab.return_value = True
             await self.watcher.sweep("focus")
             self.assertEqual(watch.layout.even_tab.await_count, 2)
+
+    async def test_deferred_resize_does_not_restore_a_users_selection(self):
+        calls = 0
+
+        async def refresh():
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                self.visible.current_session = self.visible_sessions[1]
+
+        self.app.async_refresh = refresh
+        with self.layout_patches():
+            watch.layout.even_tab.side_effect = None
+            watch.layout.even_tab.return_value = None
+            await self.watcher.sweep("event")
+        self.assertEqual(self.visible_sessions[0].activations, [])
 
     def test_watcher_cannot_manage_documents(self):
         source = inspect.getsource(watch)
