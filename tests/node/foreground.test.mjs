@@ -71,6 +71,9 @@ test("a dangling startup-file symlink is preserved before any integration state 
   assert.equal(result.status, 1);
   assert.equal(fs.readlinkSync(rc), destination);
   assert.equal(fs.existsSync(records), false);
+  const removed = spawnSync(process.execPath, [path.resolve("agent/install-foreground.mjs"), "remove", rc, records], { encoding: "utf8" });
+  assert.equal(removed.status, 0);
+  assert.equal(fs.readlinkSync(rc), destination);
 });
 
 test("classifier failures remain visible and leave the underlying command available", (t) => {
