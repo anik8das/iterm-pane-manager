@@ -60,6 +60,19 @@ test("classification still runs through the installed current-release symlink", 
   assert.equal(result.stdout, "unchanged\n");
 });
 
+test("a dangling startup-file symlink is preserved before any integration state is written", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pane-foreground-link-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const rc = path.join(directory, "zshrc");
+  const destination = path.join(directory, "missing-target");
+  const records = path.join(directory, "records");
+  fs.symlinkSync(destination, rc);
+  const result = spawnSync(process.execPath, [path.resolve("agent/install-foreground.mjs"), "install", rc, records], { encoding: "utf8" });
+  assert.equal(result.status, 1);
+  assert.equal(fs.readlinkSync(rc), destination);
+  assert.equal(fs.existsSync(records), false);
+});
+
 test("the installed shell function preserves arguments and distinguishes interactive from service use", (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pane-launch-tty-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));

@@ -26,6 +26,8 @@ function write(file, text, mode = 0o600) {
 }
 
 try {
+  // A dangling user-owned link is not an absent startup file to replace.
+  if (fs.lstatSync(target, { throwIfNoEntry: false })?.isSymbolicLink()) fs.realpathSync(target);
   const original = read(target);
   const text = original ?? "";
   const starts = [...text.matchAll(new RegExp(`^${begin}$`, "gm"))];
