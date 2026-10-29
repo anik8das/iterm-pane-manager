@@ -31,7 +31,7 @@ entry="$HOME/.local/state/iterm-pane"
 records="$root/agent-integration-state"
 
 reset_homes() {
-  rm -rf -- "$claude" "$codex" "$records"
+  rm -rf -- "$claude" "$codex" "$records" "$work/shellrc"
   mkdir -p "$claude" "$codex"
 }
 
@@ -243,11 +243,15 @@ cmp -s "$codex_file" "$work/codex.markers.original" || fail "out-of-order marker
 note
 grep -qF 'marker' "$work/markers.err" || fail "out-of-order markers: no install warning"
 note
-run_agent --remove > /dev/null 2> "$work/markers-remove.err"
+if run_agent --remove > /dev/null 2> "$work/markers-remove.err"; then
+  fail "out-of-order markers: removal reported success"
+fi
 note
 cmp -s "$codex_file" "$work/codex.markers.original" || fail "out-of-order markers: removal modified the file"
 note
 grep -qF 'marker' "$work/markers-remove.err" || fail "out-of-order markers: no removal warning"
+note
+[ -d "$records" ] || fail "failed removal discarded integration records"
 note
 
 # 12. User prose that quotes the marker text does not widen the stripped
@@ -264,7 +268,71 @@ note
 cmp -s "$codex_file" "$work/codex.prose.original" || fail "prose mentioning the marker was not restored byte-exactly"
 note
 
-# 13. No agent homes: a clean no-op.
+# 13. Optional foreground failure does not stop instruction cleanup or lose
+#     the records needed to finish removing the launcher.
+mkdir -p "$work/bin"
+printf '#!/bin/sh\nprintf "%%s\\n" --no-daemon\n' > "$work/bin/codex"
+chmod +x "$work/bin/codex"
+reset_homes
+PATH="$work/bin:$PATH" run_agent > /dev/null
+sed '/^# iterm-pane-manager:foreground:end$/d' "$work/shellrc" > "$work/shellrc.next"
+mv "$work/shellrc.next" "$work/shellrc"
+cp "$work/shellrc" "$work/shellrc.expected"
+if PATH="$work/bin:$PATH" run_agent --remove > /dev/null 2> "$work/foreground-remove.err"; then
+  fail "malformed foreground block: removal reported success"
+fi
+note
+[ ! -e "$codex_file" ] || fail "foreground failure prevented instruction removal"
+note
+[ -d "$records" ] || fail "foreground failure discarded integration records"
+note
+cmp -s "$work/shellrc" "$work/shellrc.expected" || fail "malformed foreground block was modified"
+note
+grep -qF 'continuing other cleanup' "$work/foreground-remove.err" || fail "foreground failure was not reported"
+note
+
+# 14. The full uninstaller preserves its default runtime and records when
+#     optional wiring cannot be removed. All homes and services are fixtures.
+printf '#!/bin/sh\nexit 0\n' > "$work/bin/launchctl"
+chmod +x "$work/bin/launchctl"
+uninstall_home="$work/uninstall-home"
+uninstall_root="$uninstall_home/.local/share/iterm-pane-manager"
+mkdir -p "$uninstall_root/current" "$uninstall_home/.claude" "$uninstall_home/.codex"
+cp -R "$repo_root/agent" "$uninstall_root/current/agent"
+HOME="$uninstall_home" PATH="$work/bin:$PATH" \
+  ITERM_PANE_INSTALL_ROOT="$uninstall_root" \
+  sh "$repo_root/scripts/install-agent.sh" > /dev/null
+rm "$uninstall_root/current/agent/install-foreground.mjs"
+if HOME="$uninstall_home" PATH="$work/bin:$PATH" \
+  ITERM_PANE_INSTALL_ROOT="$uninstall_root" \
+  sh "$repo_root/scripts/uninstall.sh" > /dev/null 2> "$work/uninstall.err"; then
+  fail "incomplete uninstall reported success"
+fi
+note
+[ -d "$uninstall_root/agent-integration-state" ] || fail "incomplete uninstall discarded its records"
+note
+[ -f "$uninstall_root/current/agent/foreground.mjs" ] || fail "incomplete uninstall deleted the runtime"
+note
+[ ! -e "$uninstall_home/.codex/AGENTS.md" ] || fail "missing foreground helper prevented instruction cleanup"
+note
+
+# 15. Removing an older release needs no foreground helper when that
+#     release never installed foreground wiring.
+reset_homes
+mkdir -p "$work/legacy-bin"
+printf '#!/bin/sh\nprintf "legacy help\\n"\n' > "$work/legacy-bin/codex"
+chmod +x "$work/legacy-bin/codex"
+PATH="$work/legacy-bin:$PATH" run_agent > /dev/null
+[ ! -f "$records/foreground-after" ] || fail "legacy fixture installed foreground wiring"
+note
+mv "$root/current/agent/install-foreground.mjs" "$work/foreground-helper.saved"
+PATH="$work/legacy-bin:$PATH" run_agent --remove > /dev/null
+note
+mv "$work/foreground-helper.saved" "$root/current/agent/install-foreground.mjs"
+[ ! -e "$codex_file" ] || fail "legacy instruction cleanup needed a foreground helper"
+note
+
+# 16. No agent homes: a clean no-op.
 out=$(ITERM_PANE_INSTALL_ROOT="$root" \
   ITERM_PANE_AGENT_CLAUDE_HOME="$work/missing-claude" \
   ITERM_PANE_AGENT_CODEX_HOME="$work/missing-codex" \
