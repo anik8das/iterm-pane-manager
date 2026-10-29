@@ -13,6 +13,7 @@ function runPython(python, script, args, timeout = 10_000) {
     return execFileSync(python, [script, ...args], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" },
       timeout,
       killSignal: "SIGKILL",
     }).trim();
@@ -37,12 +38,27 @@ export function sessionStatus(paths, sessionId) {
   );
 }
 
+export function sessionForTty(paths, tty) {
+  return JSON.parse(runPython(paths.python, paths.sessions, ["resolve", "--tty", tty]));
+}
+
 export function closeSessions(paths, sessionIds) {
   const unique = [...new Set(sessionIds.filter(Boolean))];
   if (!unique.length) return;
   const args = ["close"];
   for (const sessionId of unique) args.push("--session", sessionId);
   runPython(paths.python, paths.sessions, args);
+}
+
+export function retireDocuments(paths, entry) {
+  if (!Object.keys(entry.retiring ?? {}).length) return { closed: [], kept: [] };
+  const args = [
+    "retire", "--anchor", entry.anchor,
+    "--replacement", entry.session,
+    "--documents", JSON.stringify(entry.retiring),
+  ];
+  if (entry.previous) args.push("--previous", entry.previous);
+  return JSON.parse(runPython(paths.python, paths.sessions, args));
 }
 
 function recoverDocumentSessions(paths, entry, beforeSessionIds) {

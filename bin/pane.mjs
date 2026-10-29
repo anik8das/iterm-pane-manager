@@ -14,8 +14,9 @@ import {
   withStateLock,
   writeStateAtomic,
 } from "../src/node/state.mjs";
-import { ownsAnchor, parseAnchor } from "../src/node/anchor.mjs";
-import { documentsToEvict } from "../src/node/budget.mjs";
+import { parseAnchor } from "../src/node/anchor.mjs";
+import { resolveOwnership } from "../src/node/ownership.mjs";
+import { deliverDocument } from "../src/node/delivery.mjs";
 import { callerTty } from "../src/node/caller.mjs";
 import { renderDiagrams } from "../src/node/diagram.mjs";
 import { closeCandidates, resolveTarget } from "../src/node/target.mjs";
@@ -23,8 +24,8 @@ import {
   closeSessions,
   evenPanes,
   liveSessionIds,
-  openDocument,
   sessionStatus,
+  sessionForTty,
   snapshot,
 } from "../src/node/runtime.mjs";
 
@@ -97,23 +98,12 @@ function anchorSession() {
  * way out for a caller behind a multiplexer or a remote shell.
  */
 function requireOwnership(anchor) {
-  if (!anchor) return null;
-  // Asked before either way out below, so a tab that has closed is refused
-  // here rather than after a document has been rendered for it. Naming a tab
-  // deliberately says which tab, not that it still exists.
+  if (!anchor) fail("ITERM_SESSION_ID is missing");
   const status = sessionStatus(PATHS, anchor);
-  if (!status.exists) fail(`no iTerm2 session ${anchor}; its tab has closed`);
-  if (parseAnchor(process.env.PANE_ANCHOR)) return status;
-  const caller = callerTty();
-  // A sandbox that denies process information leaves the call unplaceable.
-  // Refusing then would break every caller inside one, so an unanswerable
-  // question is not treated as a failed answer. `--doctor` reports it.
-  if (caller === null) return status;
-  if (ownsAnchor(caller, status.tty)) return status;
-  fail(
-    "this process is not in the tab named by ITERM_SESSION_ID, so it inherited " +
-      "that address rather than earning it. Set PANE_ANCHOR to open there anyway.",
-  );
+  return resolveOwnership(anchor, {
+    status, explicit: Boolean(parseAnchor(process.env.PANE_ANCHOR)),
+    caller: callerTty(), find: (tty) => sessionForTty(PATHS, tty),
+  });
 }
 
 function launchctl(...args) {
@@ -279,41 +269,21 @@ function listDocuments(anchor, all) {
   }
 }
 
-/**
- * Close the oldest document panes in this tab until the next one has room.
- *
- * The choice is `documentsToEvict`; this only carries it out, so the policy
- * can be read and tested without an iTerm2 connection.
- */
-function makeRoom(state, { key, anchor, status, live }) {
-  const evicted = documentsToEvict(state, {
-    key,
-    anchor,
-    tabId: status?.tab_id ?? null,
-    reading: status?.active ? status.selected_session : null,
-    live,
-  });
-  if (!evicted.length) return [];
-  closeSessions(PATHS, evicted.map(([, entry]) => entry.session));
-  for (const [evictedKey] of evicted) delete state.documents[evictedKey];
-  return evicted.map(([, entry]) => entry.profile);
-}
-
 function openTarget(target, raw) {
-  const anchor = anchorSession();
+  let anchor = anchorSession();
   if (!anchor) {
     fail("ITERM_SESSION_ID is missing; run pane from the iTerm2 tab that should receive the document");
   }
-  const status = requireOwnership(anchor);
+  anchor = requireOwnership(anchor).anchor;
   const url = resolveTarget(target, { raw, renderer: RENDERER });
   const key = keyFor(anchor, url);
   let result;
   let openError;
-  let evicted = [];
 
   withStateLock(STATE_PATH, () => {
     const loaded = readState(STATE_PATH);
     const state = loaded.state;
+    if (requireOwnership(anchor).anchor !== anchor) fail("terminal identity changed during document preparation");
     const live = liveSessionIds(PATHS);
     const changed = pruneState(state, live);
     const previous = state.documents[key] ?? null;
@@ -323,25 +293,11 @@ function openTarget(target, raw) {
       profile: previous?.profile ?? safeProfileName(anchor, url),
       session: previous?.session ?? null,
     };
-    evicted = makeRoom(state, { key, anchor, status, live });
     try {
-      result = openDocument(PATHS, entry, { beforeSessionIds: live });
-      state.documents[key] = {
-        ...entry,
-        session: result.session,
-        tab: result.target_tab ?? status?.tab_id ?? null,
-        opened: Date.now(),
-      };
-      writeStateAtomic(STATE_PATH, state);
+      result = deliverDocument(PATHS, STATE_PATH, state, key, entry, live);
     } catch (error) {
       openError = error;
-      if (previous) state.documents[key] = previous;
-      else delete state.documents[key];
-      const after = liveSessionIds(PATHS);
-      if (previous?.session && !after.has(previous.session)) {
-        delete state.documents[key];
-      }
-      if (loaded.migrated || changed || previous || evicted.length) {
+      if (loaded.migrated || changed) {
         writeStateAtomic(STATE_PATH, state);
       }
     }
@@ -349,23 +305,23 @@ function openTarget(target, raw) {
 
   if (openError) {
     const full = /CANNOT_SPLIT/.test(openError.message)
-      ? "\n  the tab has no room left to split; close a pane in it and try again"
+      ? "\n  iTerm2 refused the split; this can mean a size constraint, a locked layout, or an unsupported pane. Existing documents were retained."
       : "";
-    fail(`document was not opened:\n${openError.message}${full}`);
+    fail(`${openError.message}${full}`);
   }
   const focus = result.focus_unchanged
     ? "focus unchanged"
     : "you moved while it opened, so focus was left alone";
-  const freed = evicted.length ? `\n  closed ${evicted.length} older document pane(s) to make room` : "";
+  const freed = result.retired ? `\n  retired ${result.retired} older document pane(s)` : "";
   console.log(
     `${result.session}  ${url}\n  ready in target tab; ${focus} (${result.elapsed}s)${freed}`,
   );
 }
 
 function closeTarget(target) {
-  const anchor = anchorSession();
+  let anchor = anchorSession();
   if (!anchor) fail("ITERM_SESSION_ID is missing");
-  requireOwnership(anchor);
+  anchor = requireOwnership(anchor).anchor;
   const keys = closeCandidates(target).map((url) => keyFor(anchor, url));
   let closedUrl;
   withStateLock(STATE_PATH, () => {
@@ -382,7 +338,7 @@ function closeTarget(target) {
 }
 
 function closeAll(anchor, all) {
-  requireOwnership(anchor);
+  anchor = requireOwnership(anchor).anchor;
   let count = 0;
   withStateLock(STATE_PATH, () => {
     const { state } = readState(STATE_PATH);
@@ -510,8 +466,8 @@ function main(args) {
   }
   if (operation === "--even") {
     allowOnly(args, new Set(["--even", "--all"]));
-    requireOwnership(anchor);
-    const output = evenPanes(PATHS, anchor, { all, loud: true });
+    const owned = requireOwnership(anchor);
+    const output = evenPanes(PATHS, owned.anchor, { all, loud: true });
     if (output) console.log(output);
     return 0;
   }

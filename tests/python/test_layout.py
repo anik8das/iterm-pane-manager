@@ -38,11 +38,19 @@ class Tab:
 
 
 class LayoutTest(unittest.IsolatedAsyncioTestCase):
+    async def test_unchanged_grid_does_not_reapply_the_native_layout(self):
+        tab = Tab(
+            [Session("a", frame(0, 0, 500, 700)), Session("b", frame(501, 0, 500, 700))]
+        )
+        self.assertIs(await layout.even_tab(tab), False)
+        self.assertFalse(tab.updated)
+        self.assertTrue(all(session.preferred_size is None for session in tab.sessions))
+
     def test_detects_width_drift(self):
         tab = Tab(
             [Session("a", frame(0, 0, 400, 700)), Session("b", frame(400, 0, 600, 700))]
         )
-        self.assertEqual(layout.needs_evening(tab, (1000, 700)), "uneven by 200pt")
+        self.assertEqual(layout.needs_evening(tab, (1000, 700)), "off target by 100pt")
 
     def test_detects_dead_space(self):
         tab = Tab(
@@ -142,6 +150,19 @@ class LayoutTest(unittest.IsolatedAsyncioTestCase):
             self.assertAlmostEqual(width, want_width)
             self.assertAlmostEqual(height, want_height)
 
+    def test_equal_columns_with_stacked_rows_need_no_resize(self):
+        a = Session("a", frame(0, 0, 500, 349))
+        b = Session("b", frame(0, 350, 500, 350))
+        c = Session("c", frame(501, 0, 500, 700))
+        column = iterm2.Splitter(vertical=False)
+        column.add_child(a)
+        column.add_child(b)
+        tab = Tab([a, b, c])
+        tab.root = iterm2.Splitter(vertical=True)
+        tab.root.add_child(column)
+        tab.root.add_child(c)
+        self.assertIsNone(layout.needs_evening(tab, (1001, 700)))
+
     async def test_invalid_geometry_does_not_submit_partial_layout(self):
         sessions = [
             Session("a", frame(0, 0, 500, 700)),
@@ -151,6 +172,33 @@ class LayoutTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await layout.even_tab(tab))
         self.assertFalse(tab.updated)
         self.assertIsNone(sessions[0].preferred_size)
+        self.assertEqual(
+            layout.needs_evening(tab, (1000, 700)), "pane geometry is pending"
+        )
+
+    async def test_focus_guard_is_rechecked_after_profile_reads(self):
+        sessions = [
+            Session("a", frame(0, 0, 400, 700)),
+            Session("b", frame(400, 0, 600, 700)),
+        ]
+        tab = Tab(sessions)
+        self.assertIsNone(await layout.even_tab(tab, allowed=lambda: False))
+        self.assertFalse(tab.updated)
+        self.assertTrue(all(session.preferred_size is None for session in sessions))
+
+    async def test_equalizing_cannot_push_browsers_below_the_native_minimum(self):
+        sessions = [Session(str(i), frame(i * 360, 0, 360, 700)) for i in range(4)]
+        for session in sessions:
+            session.async_get_profile = mock.AsyncMock(
+                return_value=SimpleNamespace(
+                    all_properties={"Custom Command": "Browser"}
+                )
+            )
+        tab = Tab(sessions)
+        with self.assertRaisesRegex(layout.LayoutConstraintError, "require 395pt"):
+            await layout.even_tab(tab)
+        self.assertFalse(tab.updated)
+        self.assertTrue(all(session.preferred_size is None for session in sessions))
 
 
 if __name__ == "__main__":

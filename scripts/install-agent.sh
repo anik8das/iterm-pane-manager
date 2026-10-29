@@ -14,6 +14,7 @@ install_root=${ITERM_PANE_INSTALL_ROOT:-"$HOME/.local/share/iterm-pane-manager"}
 agent_source="$install_root/current/agent"
 claude_home=${ITERM_PANE_AGENT_CLAUDE_HOME:-"$HOME/.claude"}
 codex_home=${ITERM_PANE_AGENT_CODEX_HOME:-"$HOME/.codex"}
+shell_rc=${ITERM_PANE_AGENT_SHELL_RC:-"${ZDOTDIR:-$HOME}/.zshrc"}
 state_dir="$HOME/.local/state/iterm-pane"
 record_dir="$install_root/agent-integration-state"
 skill_name=pane
@@ -345,10 +346,14 @@ install_codex() {
   cat "$staged" > "$target"
   rm -f -- "$base" "$staged"
   say "instructions: $target"
+  if command -v codex >/dev/null 2>&1 && codex --help 2>/dev/null | grep -q -- --no-daemon; then
+    node "$agent_source/install-foreground.mjs" install "$shell_rc" "$record_dir" || return 1
+  fi
 }
 
 remove_codex() {
   remove_skill_link "$codex_home"
+  node "$agent_source/install-foreground.mjs" remove "$shell_rc" "$record_dir" || return 1
 
   target="$codex_home/AGENTS.md"
   if [ ! -f "$target" ]; then

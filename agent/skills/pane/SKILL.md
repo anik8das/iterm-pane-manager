@@ -65,3 +65,6 @@ If `pane` fails with a permission error writing next to the document, the sandbo
 - `pane --doctor` distinguishes unavailable probes from real failures; a probe that cannot run is not a broken tool.
 - The tab has no room left to split: pane cannot place the document even after giving up its own oldest panes. Relay the message with the document path and suggest closing a pane in that tab; do not retry.
 - Links inside a rendered document do not open: see the browser-proxy entry in the repository's `docs/troubleshooting.md`.
+- A foreground session's commands can run through a shared service carrying an expired address. Distinguish the command executor from the visible terminal; keep the ownership check intact. The optional foreground-launch integration preserves the terminal identity for newly started interactive sessions.
+- After restoration, a foreground terminal can retain its old address. Pane resolves a new address only when the caller's actual terminal device matches exactly one native session. Detached or ambiguous callers remain refused; do not set an anchor by hand to conceal a refusal.
+- `CANNOT_SPLIT` does not identify a cause by itself. Relay the original rejection and measured layout instead of claiming that the tab is full. Pane respects iTerm2's 395-point minimum browser width when sizing and budgeting document columns.

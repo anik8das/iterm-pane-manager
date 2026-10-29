@@ -116,8 +116,7 @@ async def open_document(
     selected = target_tab.current_session
     selected_id = selected.session_id if selected else anchor_id
 
-    existing_closed = False
-    was_showing_the_document = False
+    existing = None
     if existing_id:
         existing_window, existing_tab, existing = locate(app, existing_id)
         if existing is None:
@@ -159,26 +158,10 @@ async def open_document(
                 "reloaded": True,
             }
 
-        # Either the protocol cannot navigate an existing browser, or the
-        # address is not one iTerm2 will navigate to. Closing first frees its
-        # exact split-tree slot in crowded tabs.
-        was_showing_the_document = selected_id == existing_id
-        await existing.async_close(force=True)
-        existing_closed = True
-        await app.async_refresh()
-        # The pane that goes back is whatever is selected now the old document
-        # pane has gone, not what was selected before it closed. This refresh
-        # is already paid for, so the fresher reading is free.
-        reselected = selected_in_tab(app, anchor_id)
-        if reselected:
-            selected_id = reselected
-        target_window, target_tab, anchor = locate(app, anchor_id)
-        if anchor is None:
-            raise DocumentError("anchor closed while replacing the browser")
-
     created = None
     try:
-        created = await anchor.async_split_pane(
+        split_target = existing if existing is not None else anchor
+        created = await split_target.async_split_pane(
             vertical=True,
             before=False,
             profile_customizations=browser_profile(profile_name, url),
@@ -192,14 +175,6 @@ async def open_document(
         # question here, and a stale answer moves a pane under someone who is
         # now looking at it.
         await app.async_refresh()
-        replacing_selected = existing_closed and was_showing_the_document
-        restore_id = (
-            created.session_id
-            if replacing_selected and before["tab_id"] == target_tab.tab_id
-            else anchor_id
-            if replacing_selected
-            else selected_id
-        )
         # Undo only our own side effect. Splitting selects the new pane inside
         # the target tab, and putting the previous one back is the whole point.
         # Anything else selected there was chosen by the person while the split
@@ -207,7 +182,7 @@ async def open_document(
         # tab is not enough, because moving between panes of the tab we are
         # splitting leaves both of those the same.
         if selected_in_tab(app, anchor_id) == created.session_id:
-            await restore_target_selection(app, restore_id)
+            await restore_target_selection(app, selected_id)
 
         if before["tab_id"] == target_tab.tab_id:
             await app.async_refresh()
@@ -222,8 +197,6 @@ async def open_document(
 
         after = identity(app)
         expected = dict(before)
-        if replacing_selected and before["tab_id"] == target_tab.tab_id:
-            expected["session_id"] = created.session_id
         # Two ways this can move someone: onto the page itself, or onto the
         # tab being split. Landing on the tab we just split, from somewhere
         # else, cannot be told apart from them walking into it at that exact
@@ -246,7 +219,9 @@ async def open_document(
             "elapsed": round(time.monotonic() - started, 3),
             "focus_unchanged": after == expected,
             "target_tab": target_tab.tab_id,
-            "reopened": existing_closed,
+            # The caller persists the replacement before retiring the old
+            # browser. A split or state-write failure must leave it usable.
+            "reopened": existing is not None,
         }
     except Exception as error:
         try:

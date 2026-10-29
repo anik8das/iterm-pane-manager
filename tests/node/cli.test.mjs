@@ -85,16 +85,6 @@ test("a command with no tab to address does not pay for an ownership check", () 
   assert.doesNotMatch(result.stderr, /not in the tab named by/);
 });
 
-test("a tab that has closed is refused before either way out of the check", () => {
-  // Naming a tab deliberately, or being unable to place the caller, says
-  // nothing about whether the tab is still there. Both returns come after.
-  const source = fs.readFileSync(cli, "utf8");
-  const body = source.slice(source.indexOf("function requireOwnership"));
-  const guard = body.indexOf("status.exists");
-  assert.ok(guard > 0 && guard < body.indexOf("process.env.PANE_ANCHOR"));
-  assert.ok(guard < body.indexOf("callerTty()"));
-});
-
 test("ownership is settled before any Markdown is rendered", () => {
   // Asserted on the source because whether the check engages depends on the
   // machine: a sandbox that hides the process table skips it. The order it

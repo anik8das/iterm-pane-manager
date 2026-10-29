@@ -1,10 +1,21 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { openDocument } from "../../src/node/runtime.mjs";
+import { liveSessionIds, openDocument } from "../../src/node/runtime.mjs";
+
+test("helpers do not create bytecode inside their source tree", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pane-readonly-helper-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(directory, "owned_module.py"), 'SESSION = "fixture"\n');
+  fs.writeFileSync(path.join(directory, "sessions.py"), 'from owned_module import SESSION\nprint(SESSION)\n');
+  const python = execFileSync(process.env.PYTHON || "python3", ["-c", "import sys; print(sys.executable)"], { encoding: "utf8" }).trim();
+  assert.deepEqual([...liveSessionIds({ python, sessions: path.join(directory, "sessions.py") })], ["fixture"]);
+  assert.equal(fs.existsSync(path.join(directory, "__pycache__")), false);
+});
 
 test("a timed-out document helper closes the pane named in its receipt", (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "iterm-pane-runtime-test-"));

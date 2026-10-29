@@ -45,13 +45,15 @@ async def main(connection, args):
         for tab in tabs
     }
     skipped = {}
+    applied = set()
     for tab in tabs:
         reason = layout.skip_reason(tab)
         if reason and reason != "single pane":
             skipped[tab.tab_id] = reason
             before.pop(tab.tab_id, None)
             continue
-        await layout.even_tab(tab)
+        if await layout.even_tab(tab) is True:
+            applied.add(tab.tab_id)
 
     await app.async_refresh()
     if global_identity(app)[:3] != focus_before[:3]:
@@ -65,7 +67,7 @@ async def main(connection, args):
         current_id = (
             tab.current_session.session_id if tab and tab.current_session else None
         )
-        if session_id and current_id != session_id:
+        if tab_id in applied and session_id and current_id != session_id:
             session = app.get_session_by_id(session_id)
             if session:
                 await session.async_activate(select_tab=False, order_window_front=False)
@@ -113,10 +115,9 @@ if __name__ == "__main__":
         iterm2.run_until_complete(run)
     except SystemExit:
         raise
-    except Exception:
+    except Exception as error:
         print(
-            "even: cannot reach iTerm2's API. Enable Settings > General > Magic > "
-            "Python API.",
+            f"even: {type(error).__name__}: {error}",
             file=sys.stderr,
         )
         sys.exit(3)

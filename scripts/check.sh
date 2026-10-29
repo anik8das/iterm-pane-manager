@@ -20,9 +20,4 @@ sh tests/shell/agent-install-test.sh
 
 # shellcheck source=scripts/blocked-patterns.sh
 . "$script_dir/blocked-patterns.sh"
-if grep -RniE \
-  --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=.ruff_cache \
-  --exclude=package-lock.json "$blocked_pattern" .; then
-  printf 'check: blocked attribution, path, or credential pattern found\n' >&2
-  exit 1
-fi
+check_source_tree .

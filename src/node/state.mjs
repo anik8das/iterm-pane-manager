@@ -27,6 +27,14 @@ function normalizeEntry(entry, key) {
   if (entry.tab !== undefined && entry.tab !== null && typeof entry.tab !== "string") {
     throw new StateError(`state entry ${key} has an invalid tab`);
   }
+  if (entry.retiring !== undefined && (
+    !isObject(entry.retiring) || Object.entries(entry.retiring).some(
+      ([session, profile]) => !session || typeof profile !== "string" || !profile,
+    )
+  )) throw new StateError(`state entry ${key} has invalid retiring panes`);
+  if (entry.previous !== undefined && entry.previous !== null && typeof entry.previous !== "string") {
+    throw new StateError(`state entry ${key} has an invalid previous session`);
+  }
   return {
     anchor: entry.anchor,
     url: entry.url,
@@ -37,6 +45,7 @@ function normalizeEntry(entry, key) {
     // Entries written before these existed sort oldest and belong to no tab.
     tab: entry.tab ?? null,
     opened: Number.isFinite(entry.opened) ? entry.opened : 0,
+    ...(entry.retiring ? { retiring: entry.retiring, previous: entry.previous ?? null } : {}),
   };
 }
 
@@ -216,6 +225,13 @@ export function keyFor(anchor, url) {
 export function pruneState(state, liveSessionIds) {
   let changed = false;
   for (const [key, entry] of Object.entries(state.documents)) {
+    if (liveSessionIds.has(entry.anchor) && !liveSessionIds.has(entry.session)
+        && entry.previous && liveSessionIds.has(entry.previous)) {
+      entry.session = entry.previous;
+      delete entry.previous;
+      delete entry.retiring;
+      changed = true;
+    }
     if (
       !liveSessionIds.has(entry.anchor)
       || !entry.session

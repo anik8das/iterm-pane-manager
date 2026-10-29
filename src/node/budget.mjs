@@ -24,13 +24,14 @@ export const DOCUMENTS_PER_TAB = 3;
  */
 export function documentsToEvict(
   state,
-  { key, anchor, tabId, reading = null, live, limit = DOCUMENTS_PER_TAB },
+  { key, anchor, tabId, reading = null, live, locations, limit = DOCUMENTS_PER_TAB },
 ) {
   if (!tabId) return [];
   const sameTab = Object.entries(state.documents)
     .filter(([otherKey, entry]) => {
       if (otherKey === key) return false;
       if (!entry.session || !live.has(entry.session)) return false;
+      if (locations) return locations[entry.session]?.tab_id === tabId;
       return entry.tab ? entry.tab === tabId : entry.anchor === anchor;
     })
     .sort((left, right) => (left[1].opened || 0) - (right[1].opened || 0));

@@ -81,9 +81,13 @@ A tracked document is replaced one of two ways. iTerm2 can navigate an open
 browser pane, which keeps the pane and its slot in the split tree, but its
 `load_url` call accepts `http` and `https` addresses only and answers
 `Invalid URL` for anything else. A rendered document is a `file:` address, so it
-is replaced by closing the pane and splitting again with the address carried in
-the profile, which is also what protocol versions without navigation do. Both
-paths end in the same tab, with the same focus contract and the same rollback.
+is replaced by creating a candidate with the address carried in its profile.
+The old browser remains open until the candidate is verified and persisted.
+`delivery.mjs` records the candidate and any pending retirement identities before
+`sessions.py` closes superseded browsers. Retirement rechecks the live tab,
+profile, browser type, and selection. A failed state write removes only the
+candidate. Failed retirement leaves the replacement tracked and reports its
+unfinished cleanup; a later explicit delivery settles it before adding a pane.
 
 State lives at `~/.local/state/iterm-pane/state.json`. It records only document identity, anchor session, browser session, and a neutral profile name. Writes use a same-directory temporary file, file sync, and atomic rename. A process-owned directory lock prevents concurrent read-modify-write loss.
 
@@ -111,6 +115,9 @@ The opener validates both placement and global focus. It never activates a windo
 The watcher stores the selected session before resizing. If iTerm2 selects a sibling as a side effect of applying layout, it restores the original session with both `select_tab` and `order_window_front` disabled. If the user changes tabs, the watcher does nothing further.
 
 Document open and close commands never call the one-shot resizer. Their layout event is handled by the watcher, which owns the selection-preservation logic.
+The watcher defers sizing while a live command owns the state lock, so it cannot
+resize a temporary replacement before its predecessor is retired. A dead lock
+owner does not suppress sizing.
 
 ## Evening policy
 
@@ -124,6 +131,15 @@ A tab is resized only when all of these conditions are true:
 - Pane spread, dead space, or pane-count change indicates a layout update is needed.
 
 Terminal grids round to whole character cells, so a 12-point tolerance prevents harmless rounding from causing a resize loop. A burst guard backs off for 60 seconds if another program repeatedly fights the layout.
+Event collection has a fixed deadline and focus changes interrupt it. Measurements
+are compared with split-tree targets, so full-height and stacked panes are not
+mistaken for uneven peers. Sizing rechecks the active tab before submission and
+restores selection only following an applied layout.
+
+The native browser minimum is 395 points in the supported terminal release.
+Document capacity uses the live tab extent and column units, up to three documents,
+instead of assuming every window can fit four equal columns. An impossible
+equal-width request is reported and left alone until geometry changes.
 
 ## Process lifecycle
 
@@ -145,6 +161,12 @@ flowchart LR
 The runtime never depends on agent wiring. `scripts/install-agent.sh`, opted into with `install.sh --agent-integration`, copies `agent/instructions.md` into `~/.claude/rules/iterm-pane.md`, symlinks the pane skill from `agent/skills/pane` into both agents' skill directories, appends the same instructions to `~/.codex/AGENTS.md` between managed markers, and adds pane's state directory to the sandbox allowlist in `~/.claude/settings.json`. Skill symlinks point into `current`, so a release refresh updates them. Every step is idempotent and ownership-checked: a rules file is replaced only when its first line is the installer's provenance comment, marker pairs must be complete and ordered, `settings.json` is rewritten only when the entry is missing, and `--remove` restores user-owned files byte-for-byte, deleting the allowlist entry only when this installation added it. `docs/agent-integration.md` is the user-facing manual.
 
 ## Failure modes
+
+The optional integration also installs an owned, removable foreground-launch
+block in the user's shell startup file when the installed command supports it.
+Service, remote, help, and noninteractive commands retain their arguments.
+Visible interactive launches stay in their own terminal's process tree; the
+ownership guard itself does not trust inherited addresses more broadly.
 
 | Failure | Behavior |
 |---|---|

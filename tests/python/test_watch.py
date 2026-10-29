@@ -95,5 +95,42 @@ class StartupIsNotAnExceptionToTheRule(unittest.IsolatedAsyncioTestCase):
             await self.run_main(once=True)
 
 
+class EventSchedulingTest(unittest.IsolatedAsyncioTestCase):
+    async def run_stream(self, focus=False):
+        watcher = watch.Watcher(object(), options(debounce=100))
+        wake = asyncio.Event()
+        swept = asyncio.Event()
+
+        async def sweep(_reason):
+            swept.set()
+
+        async def stream():
+            while True:
+                wake.set()
+                await asyncio.sleep(0.01)
+
+        with mock.patch.object(watcher, "sweep_guarded", side_effect=sweep) as called:
+            runner = asyncio.create_task(watcher.run(wake))
+            producer = asyncio.create_task(stream())
+            try:
+                await asyncio.sleep(0.02)
+                if focus:
+                    watcher.focus_pending = True
+                    wake.set()
+                await asyncio.wait_for(swept.wait(), 0.05 if focus else 0.3)
+                if focus:
+                    self.assertEqual(called.call_args.args[0], "focus")
+            finally:
+                runner.cancel()
+                producer.cancel()
+                await asyncio.gather(runner, producer, return_exceptions=True)
+
+    async def test_continuous_events_cannot_starve_a_sweep(self):
+        await self.run_stream()
+
+    async def test_focus_interrupts_an_in_progress_event_window(self):
+        await self.run_stream(focus=True)
+
+
 if __name__ == "__main__":
     unittest.main()

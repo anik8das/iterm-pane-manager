@@ -36,6 +36,13 @@ and converts them into each session's own grid units. Refreshed measurements cor
 on later sweeps. Update and reinstall the runtime, then create a document pane
 and check that the selected tab converges to equal widths.
 
+Browser panes also have a native minimum width of 395 points. A fixed document
+count cannot fit every window: four equal columns in a 1,440-point tab are too
+narrow. Pane budgets columns from live geometry and retires only its own oldest
+unselected documents after the new document is safely tracked. It will not force
+an impossible equal-width layout or sacrifice an existing document on a failed
+split. Repeated layout events no longer postpone sizing indefinitely.
+
 ## Focus changes unexpectedly
 
 Pause automatic evening immediately:
@@ -64,15 +71,21 @@ Fixed. Re-opening a document that already had a pane asked iTerm2 to navigate
 that pane to the new address, and its `load_url` call accepts `http` and `https`
 only, so every `file:` address, which is what a rendered document is, came back
 `Invalid URL` and the replacement was lost. A rendered document is now replaced
-by closing the pane and splitting again. On an older build the workaround is
-`pane --close <path>` followed by `pane <path>`.
+by creating and verifying a new browser before the old one is retired. If a split
+or state write fails, the old document stays open.
 
 ### "this process is not in the tab named by ITERM_SESSION_ID"
 
-The address is right and the caller is not there. `ITERM_SESSION_ID` is
+`ITERM_SESSION_ID` is
 inherited by every child, so a job that was detached from a tab keeps a valid
 address for it, and a shell inside a multiplexer or a remote session carries an
 address for a terminal it is not on.
+
+A visible interactive session can also execute its commands through a shared
+service carrying another terminal's old address. The visible terminal still
+exists; the executor has lost its connection to that terminal. The optional
+foreground-launch integration repairs this boundary for newly started interactive
+sessions, preserving the ownership check and refusing genuinely detached jobs.
 
 Where that is deliberate, name the tab and say so:
 
@@ -86,6 +99,12 @@ Render it without opening anything instead:
 ```sh
 mdrender report.md --no-open
 ```
+
+### `CANNOT_SPLIT`
+
+This response does not prove a shortage of space. Native pane minimums, a locked
+layout, and unsupported panes can all cause it. Preserve the original error and
+check the measured layout; do not close unrelated panes or guess another tab.
 
 ## Links in a document do not open
 
