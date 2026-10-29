@@ -1,5 +1,6 @@
 import argparse
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 import even
@@ -10,6 +11,10 @@ class Session:
         self.session_id = session_id
         self.tab = None
         self.activations = []
+        self.frame = SimpleNamespace(
+            origin=SimpleNamespace(x=0, y=0),
+            size=SimpleNamespace(width=1000, height=700),
+        )
 
     async def async_activate(self, select_tab=True, order_window_front=True):
         self.activations.append((select_tab, order_window_front))
@@ -62,7 +67,8 @@ class EvenFocusTest(unittest.IsolatedAsyncioTestCase):
         window = Window("window", [tab])
         app = App(window)
 
-        async def resize(candidate):
+        async def resize(candidate, *, app, content):
+            self.assertEqual(content, (1000, 700))
             candidate.current_session = second
             return True
 
@@ -86,7 +92,7 @@ class EvenFocusTest(unittest.IsolatedAsyncioTestCase):
         window = Window("window", [first_tab, other_tab])
         app = App(window)
 
-        async def resize(_candidate):
+        async def resize(_candidate, *, app, content):
             window.current_tab = other_tab
 
         with (

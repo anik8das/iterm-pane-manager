@@ -22,7 +22,7 @@ const flags = new Set([
 
 export function foregroundLaunch(args, { terminal, anchor }) {
   if (!terminal || !anchor) return false;
-  if (args.some((arg) => arg === "--no-daemon" || arg === "--remote" || arg.startsWith("--remote="))) return false;
+  if (args.some((arg) => ["--no-daemon", "--remote", "--help", "-h", "--version", "-V"].includes(arg) || arg.startsWith("--remote="))) return false;
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === "--") return true;

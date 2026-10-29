@@ -35,6 +35,8 @@ flowchart TD
 
 Naming a tab is not being in it. The variable is inherited by every child, so a detached job keeps a valid address for a tab it left, and would otherwise split, close, or resize a tab nobody there asked it to touch. The caller's terminal is taken from the nearest ancestor that has one, because an agent runs its commands without a controlling terminal of their own; a detached caller reaches the init process without finding one and is refused. Both sides must be known, and the check runs before Markdown is rendered so a refusal leaves nothing behind. `PANE_ANCHOR` names a tab deliberately and skips the check, which is the way out for a multiplexer or a remote shell, where the terminal is genuinely not the tab's own.
 
+A restored terminal can keep its old environment address after the native session identifier changes. Recovery requires a unique native session on the caller's actual terminal device. When a restored session lacks its `tty` variable, its native process identifier is resolved through the operating system. No selected-tab fallback is used.
+
 A sandbox that denies process information makes the caller unplaceable rather than detached. Refusing then would turn the guard on every caller inside one, including the agents that use this tool most, so an unanswerable question is not treated as a failed answer and the check is skipped. `pane --doctor` reports which of the two applies.
 
 ### Rendering boundary
@@ -130,6 +132,8 @@ A tab is resized only when all of these conditions are true:
 - No pane is zoomed.
 - Pane spread, dead space, or pane-count change indicates a layout update is needed.
 
+When supported, the native same-tree layout command sizes existing sessions without the legacy grid-size call that can fit the window from stale grids. The original conversion path remains for older protocols and weighted split trees whose unit shares differ from native equal-child shares. Both paths preserve identifiers, order, and topology. Pane-sized gaps left by closing hidden browsers are treated as usable space; only native one-point dividers are reserved. Already equal physical layouts are left alone.
+
 Terminal grids round to whole character cells, so a 12-point tolerance prevents harmless rounding from causing a resize loop. A burst guard backs off for 60 seconds if another program repeatedly fights the layout.
 Event collection has a fixed deadline and focus changes interrupt it. Measurements
 are compared with split-tree targets, so full-height and stacked panes are not
@@ -160,13 +164,13 @@ flowchart LR
 
 The runtime never depends on agent wiring. `scripts/install-agent.sh`, opted into with `install.sh --agent-integration`, copies `agent/instructions.md` into `~/.claude/rules/iterm-pane.md`, symlinks the pane skill from `agent/skills/pane` into both agents' skill directories, appends the same instructions to `~/.codex/AGENTS.md` between managed markers, and adds pane's state directory to the sandbox allowlist in `~/.claude/settings.json`. Skill symlinks point into `current`, so a release refresh updates them. Every step is idempotent and ownership-checked: a rules file is replaced only when its first line is the installer's provenance comment, marker pairs must be complete and ordered, `settings.json` is rewritten only when the entry is missing, and `--remove` restores user-owned files byte-for-byte, deleting the allowlist entry only when this installation added it. `docs/agent-integration.md` is the user-facing manual.
 
-## Failure modes
-
 The optional integration also installs an owned, removable foreground-launch
 block in the user's shell startup file when the installed command supports it.
 Service, remote, help, and noninteractive commands retain their arguments.
 Visible interactive launches stay in their own terminal's process tree; the
 ownership guard itself does not trust inherited addresses more broadly.
+
+## Failure modes
 
 | Failure | Behavior |
 |---|---|
@@ -174,7 +178,7 @@ ownership guard itself does not trust inherited addresses more broadly.
 | State JSON invalid | Command fails loudly and preserves the file for recovery. |
 | Concurrent commands | The second command waits for the owned state lock, then reads fresh state. |
 | Caller detached from its tab | The command fails before rendering; `PANE_ANCHOR` overrides. |
-| Anchor tab already closed | The command fails naming the session, before rendering. |
+| Inherited address expired | Recover only a unique session on the caller's verified terminal, otherwise refuse before rendering. An explicit expired address always refuses. |
 | Wrong-tab split | The new browser closes and the command fails. |
 | User navigates during split | The new browser closes; user focus is not restored or redirected. |
 | WebKit is retiring a content process | Document opening has a separate 30-second deadline instead of the 10-second helper deadline. |

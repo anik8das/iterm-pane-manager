@@ -13,7 +13,7 @@ flowchart TD
     K["Live delivery lock"] -.->|defer sizing| J
 ```
 
-Canonical task and continuation record. The owner asked to repair uneven widths, misleading space errors, and foreground sessions refused as detached. On October 29 the owner authorized implementation after self-review and the full development cycle. That self-review passed for the confirmed repairs; unresolved native behavior remains an investigation item, not an assumed fix.
+Canonical task and continuation record. The owner asked to repair uneven widths, misleading space errors, and foreground sessions refused as detached. On October 29 the owner authorized implementation after self-review and the full development cycle. The plan self-review passed. Initial implementation is committed at `60c9922`; the verified sizing corrections are being committed before review.
 
 ## Confirmed causes and repairs
 
@@ -31,6 +31,28 @@ Canonical task and continuation record. The owner asked to repair uneven widths,
 
 The installed source matched `origin/main` at `d0d96d9`; repeating the earlier grid-to-point repair would have fixed nothing. Baseline live widths of 478/480/480 and 715/724 points were already within rounding tolerance.
 
+## Native sizing diagnosis
+
+```mermaid
+sequenceDiagram
+    participant P as Pane command
+    participant T as Terminal layout
+    participant W as Watcher
+    P->>T: Create candidate and retire predecessor
+    T-->>W: Hidden tab leaves unused space
+    W->>T: Request equal sizes
+    alt Legacy grid-size call
+        T-->>W: Window fitted from stale grids
+    else Supported same-tree layout call
+        T-->>W: Native frames and grids fitted together
+    end
+```
+
+- A live fixture reproduced the missing-space condition: after retirement, remaining pane widths were 252/395/395 across an available 1,440-point area. `point_targets` treated the pane-sized hole as divider space and allocated only the occupied 1,044 points. Equal 347-point requests were therefore impossible despite the unused space.
+- `even_tab` now receives the existing window-content measurement and skips already equal physical layouts, including harmless grid rounding. The older native sizing path has separately confirmed upstream defects: shadowed divider state and missing session-grid fitting before window fitting.
+- The supported `async_apply_layout` call, using exactly the same session identifiers and split tree, passed six opens/replacements at 479/479/480 points with focus unchanged. It also passed a forced state-save failure with the old document retained and no orphan. The integrated source subsequently passed the same sequence after correcting the divider calculation. Only native one-point dividers are reserved; the rest of the gap is usable content. The failure test retained the old document with no orphan.
+- Native tree sizing is used only when its equal child shares match the existing leaf-unit policy. The established grid path remains for older protocols and more complex weighted trees. Native errors propagate; there is no mutation retry or timeout increase.
+
 ## Design decision and self-review
 
 | Option | Decision and trade-off |
@@ -41,7 +63,7 @@ The installed source matched `origin/main` at `d0d96d9`; repeating the earlier g
 
 - A disposable background tab proved that a candidate can be created with the old browser retained: 482 ms and 362 ms, with global focus unchanged. The fixture was closed afterward. Native local-file navigation still returns `FAILED: Invalid URL`.
 - The original plan was corrected: verifying the browser is insufficient if a later state write can fail. `delivery.mjs` now coordinates persistence and checked retirement. Additive `retiring` and `previous` state fields preserve unfinished work; there is no server or new state engine.
-- Replacements split beside their predecessor before retirement, preserving document order. Unchanged grid requests are skipped: the installed native release unnecessarily rebuilds them and can shrink panes. Upstream separately fixed this in `f1cd67a6b4` and actual sizing loss in `2f8c65b462`; the latter native defect remains a verification concern.
+- Replacements split beside their predecessor before retirement, preserving document order. Already equal physical layouts and unchanged grid requests are skipped: the installed native release unnecessarily rebuilds them and can shrink panes. Upstream separately fixed this in `f1cd67a6b4` and actual sizing loss in `2f8c65b462`; the latter native defect remains a verification concern.
 - Column budgeting uses fresh session locations, not remembered tab membership. A selected document, a terminal, a moved browser, or a changed profile is never an automatic victim.
 - The source guard remains intact. A documented long CLI option whose characters resemble a key prefix is assembled from readable parts; no credential pattern is excluded or weakened.
 - Contracts read: `AGENTS.md`, `docs/goals.md`, `CONTRIBUTING.md`, and the complete check script. No separate numeric line/file budget contract exists here.
@@ -63,18 +85,18 @@ Before persistence, failure retains old documents and removes only the new candi
 
 ## Validation and remaining work
 
-- Latest completed full gate: 94 Node tests, 61 Python tests, lint, formatting, audit, 72 installation assertions, and source guard all passed. Rerun after further edits before publication.
+- Latest completed full gate: 95 Node tests, 67 Python tests, lint, formatting, audit, 72 installation assertions, and source guard all passed. Rerun after further edits before publication.
 - A real disposable terminal ran the complete command with a deliberately expired inherited address and no explicit anchor. Opening and closing both passed, with delivery to the correct background tab and focus unchanged. That fixture was closed afterward.
 - New tests cover steady event streams, focus interruption, deferred selection, stacked layouts, native minimums, split failure, state-write failure, pending cleanup, moved documents, shell installation/removal, foreign configuration, and argument preservation through a real terminal device.
-- **Native issue still unresolved:** the original watcher logged repeated 15-second timeouts without recording the failing stage. A 100-second replacement observation did not reproduce them. Stage-specific diagnostics are implemented; do not claim that logging alone fixes their cause.
+- The original watcher logged repeated 15-second timeouts without a stage. A later process sample proved that a native file-opening confirmation was running a modal loop, blocking terminal requests. The owner reported no remaining dialog; the interface then recovered and the background verification passed. Stage-specific diagnostics retain that distinction; timeout limits are unchanged.
 - The crash report later confirmed that the background-window probe triggered native `assert(profile)` in `iTermSessionFactory.m:379`, through profile-less new-window creation. The interruption was acknowledged to the owner. Do not use that probe again. The application and its interface recovered. Terminal servers and recovery data were preserved.
-- In the next background-tab test, delivery and retirement of the third document succeeded: its temporary state contains documents two and three. The following explicit sizing operation timed out, as did cleanup. This is not a passed sizing test. The fixture was closed by its exact recorded terminal identifier through native scripting, after which the programming interface responded again. Continue with stage diagnostics and the new no-op guard; never mask this failure or increase its timeout.
-- Finish native open/replacement, selected/hidden tab focus, constrained-width capacity, mixed font sizes, stacked rows, zoom exclusion, and restart checks once the interface is healthy.
-- Finish local diff review, owning-account pull request, hosted checks, one review through the shared review host, all finding dispositions, normal staged installation on this Mac, and installed-path verification. Do not install a candidate whose final health check cannot run.
+- An earlier background-tab run timed out during sizing and cleanup. It was preserved as a failed result; the fixture was closed by its exact recorded terminal identity. The final integrated run passed all six deliveries, replacements, capacity retirement, and forced save-failure checks. Its owned fixture was closed. Focus comparisons use each operation's baseline, allowing normal user navigation between operations.
+- Live checks passed for selected-tab open/replacement, hidden-tab focus preservation, width-constrained retirement, mixed font sizes, stacked rows, and zoom exclusion. The mixed/stacked target deviation was 0.5 points; the window size was unchanged. The selected fixture was left alone when the owner navigated away. All owned fixtures with receipts were closed. The health check passed after the earlier application restart.
+- Local review also found and repaired close-after-interrupted-retirement bookkeeping and an anchor-move race during retirement. Local diff review passed. Finish the owning-account pull request, hosted checks, one review through the shared review host, all finding dispositions, normal staged installation on this Mac, and installed-path verification. Do not install a candidate whose final health check cannot run.
 
 ## Live state and continuation
 
-- Worktree: `~/.local/share/agent-workspaces/iterm-pane-manager/pane-reliability`; branch `fix/pane-reliability`; base `d0d96d9`. Implementation is uncommitted at this checkpoint.
+- Worktree: `~/.local/share/agent-workspaces/iterm-pane-manager/pane-reliability`; branch `fix/pane-reliability`; base `d0d96d9`. Initial implementation is committed at `60c9922`; further sizing and cleanup corrections are uncommitted.
 - Shared review host assigned owner `anik8das`. Overlap checks found no competing pane implementation; open requests were dependency updates. Do not change the review host's runtime installation or start another review ledger.
 - Main changes: `src/node/delivery.mjs` coordinates replacement and retirement; `sessions.py` supplies live geometry and verifies retirement; `layout.py` and `watch.py` handle safe sizing; `agent/foreground.mjs` and `agent/install-foreground.mjs` install reversible launch routing. `bin/pane.mjs` delegates delivery under its existing state lock.
 - The diagnostic foreground watcher ended when the terminal connection closed and its `finally` restored the existing watcher service. Its observation log is in the check environment; verify live processes rather than assuming it remains active.
@@ -92,4 +114,4 @@ pane --watch-status
 tail -40 "$PANE_CHECK_ENV/watcher-observation.log"
 ```
 
-Native references: [browser minimum and split constraints](https://github.com/gnachman/iTerm2/blob/v3.7.6/sources/TerminalView/PTYTab.m#L3276), [request handler](https://github.com/gnachman/iTerm2/blob/v3.7.6/sources/API/iTermAPIHelper.m#L2689), and [split preconditions](https://github.com/gnachman/iTerm2/blob/v3.7.6/sources/TerminalView/PseudoTerminal.m#L11645).
+Native references: [layout application contract](https://iterm2.com/python-api/app.html#iterm2.App.async_apply_layout), [native thin dividers](https://github.com/gnachman/iTerm2/blob/v3.7.6/sources/TerminalView/PTYTab.m#L117), [browser minimum and split constraints](https://github.com/gnachman/iTerm2/blob/v3.7.6/sources/TerminalView/PTYTab.m#L3276), [request handler](https://github.com/gnachman/iTerm2/blob/v3.7.6/sources/API/iTermAPIHelper.m#L2689), and [split preconditions](https://github.com/gnachman/iTerm2/blob/v3.7.6/sources/TerminalView/PseudoTerminal.m#L11645).

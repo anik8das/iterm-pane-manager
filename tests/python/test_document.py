@@ -284,6 +284,34 @@ class DocumentTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.created.activations, [(False, False)])
         self.assertEqual(document.identity(self.app), before)
 
+    async def test_retirement_rechecks_anchor_after_awaiting_the_profile(self):
+        old = Session("browser-old")
+        old.app, old.tab = self.app, self.hidden
+        self.created.app, self.created.tab = self.app, self.hidden
+        self.hidden.sessions.extend([old, self.created])
+
+        async def moved_anchor():
+            self.hidden.sessions.remove(self.anchor)
+            self.visible.sessions.append(self.anchor)
+            self.anchor.tab = self.visible
+            return type(
+                "Profile",
+                (),
+                {"name": "pane owned", "all_properties": {"Custom Command": "Browser"}},
+            )()
+
+        old.async_get_profile = moved_anchor
+        result = await sessions.retire_documents(
+            self.app,
+            self.anchor.session_id,
+            self.created.session_id,
+            old.session_id,
+            {old.session_id: "pane owned"},
+        )
+        self.assertEqual(result["closed"], [])
+        self.assertEqual(len(result["kept"]), 1)
+        self.assertFalse(old.closed)
+
     async def test_navigable_accepts_web_addresses_only(self):
         self.assertTrue(document.navigable("http://example.com/"))
         self.assertTrue(document.navigable("https://example.com/"))

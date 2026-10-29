@@ -31,8 +31,7 @@ font cells for terminals and point-sized cells for browsers, so equal grid
 counts do not mean equal visible widths. The mismatch can appear on any
 screen size, and oversized requests are constrained by the available screen.
 
-The watcher now allocates physical shares through the existing split tree
-and converts them into each session's own grid units. Refreshed measurements correct rounding and pane decorations
+The watcher allocates physical shares through the existing split tree. Where supported and equivalent to those shares, it uses the native same-tree layout command; older protocols and weighted trees retain per-session grid conversion. Refreshed measurements correct rounding and pane decorations
 on later sweeps. Update and reinstall the runtime, then create a document pane
 and check that the selected tab converges to equal widths.
 
@@ -86,6 +85,8 @@ service carrying another terminal's old address. The visible terminal still
 exists; the executor has lost its connection to that terminal. The optional
 foreground-launch integration repairs this boundary for newly started interactive
 sessions, preserving the ownership check and refusing genuinely detached jobs.
+
+After a crash or restart, visible processes may retain an expired address even though their terminal is still open. Pane recovers it only through a unique native session on the same terminal device, including restored sessions whose device must be resolved through their native process. A detached executor cannot use this recovery.
 
 Where that is deliberate, name the tab and say so:
 

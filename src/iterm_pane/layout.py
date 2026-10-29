@@ -5,6 +5,8 @@ import iterm2
 TOLERANCE = 12.0
 # Native browser minimum in the terminal's split-layout implementation.
 MIN_BROWSER_WIDTH = 395.0
+# Native split views use the one-point thin divider style.
+DIVIDER_WIDTH = 1.0
 
 
 class LayoutConstraintError(ValueError):
@@ -134,7 +136,7 @@ def _span(sessions):
     )
 
 
-def point_targets(node):
+def point_targets(node, content=None):
     """Allocate the existing split-tree extent using equal leaf-size units.
 
     Sum units along a split and take their maximum across it. Thus a column
@@ -142,7 +144,8 @@ def point_targets(node):
     without forcing that neighbor to half height. Preserve measured dividers.
     """
     if not isinstance(node, iterm2.Splitter):
-        return (1, 1), [(node, node.frame.size.width, node.frame.size.height)]
+        width, height = content or (node.frame.size.width, node.frame.size.height)
+        return (1, 1), [(node, width, height)]
     children = [point_targets(child) for child in node.children]
     if not children:
         return (0, 0), []
@@ -158,6 +161,11 @@ def point_targets(node):
         child_width, child_height = _span([item[0] for item in child_targets])
         targets.append((child_units, child_targets, child_width, child_height))
     gap = (width if axis == 0 else height) - sum(item[2 + axis] for item in targets)
+    # A closed pane in a hidden tab can leave a pane-sized hole. That empty
+    # area is usable content, not an unusually wide divider to preserve.
+    gap = min(gap, (len(children) - 1) * DIVIDER_WIDTH)
+    if content is not None:
+        width, height = content
     result = []
     for child_units, child_targets, child_width, child_height in targets:
         desired = [width, height]
@@ -174,7 +182,23 @@ def point_targets(node):
     return tuple(units), result
 
 
-async def even_tab(tab, *, allowed=None):
+def native_tree(node):
+    """Keep the same tree when equal native child shares match our leaf units."""
+    if not isinstance(node, iterm2.Splitter):
+        return {"session_id": node.session_id}
+    children = [native_tree(child) for child in node.children]
+    if not children or any(child is None for child in children):
+        return None
+    if len(children) == 1:
+        return children[0]
+    axis = 0 if node.vertical else 1
+    units = [point_targets(child)[0][axis] for child in node.children]
+    if len(set(units)) != 1:
+        return None
+    return {"vertical": node.vertical, "children": children}
+
+
+async def even_tab(tab, *, app=None, content=None, allowed=None):
     """Convert equal physical shares to each pane's own grid units.
 
     Preferred sizes are cell counts, not weights. Browser grids use points,
@@ -188,7 +212,10 @@ async def even_tab(tab, *, allowed=None):
         grid = session.grid_size
         if min(size.width, size.height, grid.width, grid.height) <= 0:
             return None  # A split may still be acquiring its initial geometry.
-    _, targets = point_targets(tab.root)
+    content = content or extent(tab)
+    if needs_evening(tab, content) is None:
+        return False
+    _, targets = point_targets(tab.root, content)
     preferences = []
     for session, target_width, target_height in targets:
         if target_width < MIN_BROWSER_WIDTH:
@@ -209,6 +236,16 @@ async def even_tab(tab, *, allowed=None):
         )
     if allowed is not None and not allowed():
         return None
+    tree = native_tree(tab.root)
+    if (
+        app is not None
+        and tree
+        and iterm2.capabilities.supports_apply_layout(app.connection)
+    ):
+        # This preserves native view extent and refreshes session grids. The
+        # older grid-size RPC fits the window to stale grids after a close.
+        await app.async_apply_layout({"tabs": [{"tab_id": tab.tab_id, "root": tree}]})
+        return True
     if all(
         width == session.grid_size.width and height == session.grid_size.height
         for session, width, height in preferences

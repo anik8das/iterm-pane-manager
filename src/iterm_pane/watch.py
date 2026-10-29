@@ -176,6 +176,8 @@ class Watcher:
                 applied = await request(
                     layout.even_tab(
                         candidate,
+                        app=self.app,
+                        content=layout.content_size(window),
                         allowed=lambda target=candidate: (
                             self.active_tab() == (window, target) and not layout_busy()
                         ),

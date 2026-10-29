@@ -16,7 +16,7 @@ import {
 } from "../src/node/state.mjs";
 import { parseAnchor } from "../src/node/anchor.mjs";
 import { resolveOwnership } from "../src/node/ownership.mjs";
-import { deliverDocument } from "../src/node/delivery.mjs";
+import { deliverDocument, finishRetirement } from "../src/node/delivery.mjs";
 import { callerTty } from "../src/node/caller.mjs";
 import { renderDiagrams } from "../src/node/diagram.mjs";
 import { closeCandidates, resolveTarget } from "../src/node/target.mjs";
@@ -328,6 +328,7 @@ function closeTarget(target) {
     const { state } = readState(STATE_PATH);
     const key = keys.find((candidate) => state.documents[candidate]);
     if (!key) fail(`no tracked pane in this tab for ${target}`);
+    finishRetirement(PATHS, STATE_PATH, state, key);
     const entry = state.documents[key];
     closeSessions(PATHS, [entry.session]);
     closedUrl = entry.url;
@@ -345,6 +346,7 @@ function closeAll(anchor, all) {
     const targets = Object.entries(state.documents).filter(([, entry]) =>
       scoped(entry, anchor, all),
     );
+    for (const [key] of targets) finishRetirement(PATHS, STATE_PATH, state, key);
     closeSessions(
       PATHS,
       targets.map(([, entry]) => entry.session),
