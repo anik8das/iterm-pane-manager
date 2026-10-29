@@ -52,7 +52,11 @@ async def main(connection, args):
             skipped[tab.tab_id] = reason
             before.pop(tab.tab_id, None)
             continue
-        if await layout.even_tab(tab) is True:
+        window = next(window for window in app.windows if tab in window.tabs)
+        if (
+            await layout.even_tab(tab, app=app, content=layout.content_size(window))
+            is True
+        ):
             applied.add(tab.tab_id)
 
     await app.async_refresh()

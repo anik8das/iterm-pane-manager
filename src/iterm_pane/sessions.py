@@ -88,11 +88,13 @@ async def retire_documents(app, anchor_id, replacement_id, previous_id, document
         # Profile retrieval yields to the user and layout notifications.
         await app.async_refresh()
         _window, fresh_tab, fresh = locate(app, session_id)
+        _anchor_window, anchor_tab, anchor = locate(app, anchor_id)
+        _new_window, new_tab, replacement = locate(app, replacement_id)
         if fresh is None:
             closed.append(session_id)
             continue
-        if fresh_tab is not tab:
-            kept.append(f"{session_id}: pane moved")
+        if fresh_tab is not tab or anchor_tab is not tab or new_tab is not tab:
+            kept.append(f"{session_id}: pane or replacement moved")
             continue
         if tab.current_session and tab.current_session.session_id == session_id:
             if session_id != previous_id:

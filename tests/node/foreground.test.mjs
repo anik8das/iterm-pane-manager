@@ -13,7 +13,7 @@ test("visible interactive launches retain their own terminal execution", () => {
   }
 });
 test("service, remote, help, and explicit execution choices remain unchanged", () => {
-  for (const args of [["agents"], ["exec", "hello"], ["review"], ["app-server"], ["remote-control"], ["--remote=unix://", "resume"], ["--remote", "unix://"], ["--no-daemon"], ["--help"], ["--version"], ["--unknown-option", "exec"]]) {
+  for (const args of [["agents"], ["exec", "hello"], ["review"], ["app-server"], ["remote-control"], ["--remote=unix://", "resume"], ["--remote", "unix://"], ["--no-daemon"], ["--help"], ["resume", "--help"], ["fork", "--help"], ["--version"], ["--unknown-option", "exec"]]) {
     assert.equal(foregroundLaunch(args, visible), false, JSON.stringify(args));
   }
   assert.equal(foregroundLaunch([], { terminal: false, anchor: "inherited" }), false);

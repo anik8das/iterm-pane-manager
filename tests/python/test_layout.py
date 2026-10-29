@@ -38,6 +38,103 @@ class Tab:
 
 
 class LayoutTest(unittest.IsolatedAsyncioTestCase):
+    async def test_native_layout_preserves_the_tree_and_avoids_the_grid_size_rpc(self):
+        sessions = [
+            Session("a", frame(0, 0, 400, 700)),
+            Session("b", frame(401, 0, 600, 700)),
+        ]
+        tab = Tab(sessions)
+        tab.tab_id = "target-tab"
+        app = SimpleNamespace(
+            connection=SimpleNamespace(iterm2_protocol_version=(1, 14)),
+            async_apply_layout=mock.AsyncMock(),
+        )
+        self.assertIs(await layout.even_tab(tab, app=app), True)
+        app.async_apply_layout.assert_awaited_once_with(
+            {
+                "tabs": [
+                    {
+                        "tab_id": "target-tab",
+                        "root": {
+                            "vertical": True,
+                            "children": [
+                                {"session_id": "a"},
+                                {"session_id": "b"},
+                            ],
+                        },
+                    }
+                ]
+            }
+        )
+        self.assertFalse(tab.updated)
+        self.assertTrue(all(session.preferred_size is None for session in sessions))
+
+    async def test_native_layout_error_is_not_retried_with_a_different_mutation(self):
+        tab = Tab(
+            [Session("a", frame(0, 0, 400, 700)), Session("b", frame(401, 0, 600, 700))]
+        )
+        tab.tab_id = "target-tab"
+        app = SimpleNamespace(
+            connection=SimpleNamespace(iterm2_protocol_version=(1, 14)),
+            async_apply_layout=mock.AsyncMock(side_effect=RuntimeError("tree changed")),
+        )
+        with self.assertRaisesRegex(RuntimeError, "tree changed"):
+            await layout.even_tab(tab, app=app)
+        self.assertFalse(tab.updated)
+
+    def test_native_tree_retains_stacked_rows_and_rejects_unequal_child_units(self):
+        a, b, c, d = [Session(str(i), frame(i * 400, 0, 400, 700)) for i in range(4)]
+        row = iterm2.Splitter(vertical=False)
+        row.add_child(a)
+        row.add_child(b)
+        root = iterm2.Splitter(vertical=True)
+        root.add_child(row)
+        root.add_child(c)
+        self.assertEqual(
+            layout.native_tree(root)["children"][0],
+            {
+                "vertical": False,
+                "children": [{"session_id": "0"}, {"session_id": "1"}],
+            },
+        )
+        nested = iterm2.Splitter(vertical=True)
+        nested.add_child(a)
+        nested.add_child(d)
+        row.children[0] = nested
+        self.assertIsNone(layout.native_tree(root))
+
+    async def test_closed_pane_dead_space_uses_the_available_content_extent(self):
+        sessions = [
+            Session("terminal", frame(0, 0, 252, 876)),
+            Session("browser-a", frame(253, 0, 395, 876)),
+            Session("browser-b", frame(1045, 0, 395, 876)),
+        ]
+        for session, width, height in zip(sessions, (34, 385, 385), (50, 850, 850)):
+            session.grid_size = SimpleNamespace(width=width, height=height)
+            session.async_get_profile = mock.AsyncMock(
+                return_value=SimpleNamespace(
+                    all_properties={"Custom Command": "Browser"}
+                )
+            )
+        tab = Tab(sessions)
+        self.assertIs(await layout.even_tab(tab, content=(1440, 876)), True)
+        self.assertTrue(tab.updated)
+        for session in sessions:
+            self.assertGreater(session.preferred_size.width, session.grid_size.width)
+
+    async def test_equal_physical_widths_do_not_resize_for_grid_rounding(self):
+        sessions = [
+            Session("terminal", frame(0, 0, 479, 876)),
+            Session("browser-a", frame(480, 0, 479, 876)),
+            Session("browser-b", frame(960, 0, 480, 876)),
+        ]
+        for session, width, height in zip(sessions, (67, 469, 470), (50, 850, 850)):
+            session.grid_size = SimpleNamespace(width=width, height=height)
+        tab = Tab(sessions)
+        self.assertIs(await layout.even_tab(tab), False)
+        self.assertFalse(tab.updated)
+        self.assertTrue(all(session.preferred_size is None for session in sessions))
+
     async def test_unchanged_grid_does_not_reapply_the_native_layout(self):
         tab = Tab(
             [Session("a", frame(0, 0, 500, 700)), Session("b", frame(501, 0, 500, 700))]
@@ -187,7 +284,11 @@ class LayoutTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(session.preferred_size is None for session in sessions))
 
     async def test_equalizing_cannot_push_browsers_below_the_native_minimum(self):
-        sessions = [Session(str(i), frame(i * 360, 0, 360, 700)) for i in range(4)]
+        widths = (255, 395, 395, 395)
+        sessions = [
+            Session(str(i), frame(sum(widths[:i]), 0, width, 700))
+            for i, width in enumerate(widths)
+        ]
         for session in sessions:
             session.async_get_profile = mock.AsyncMock(
                 return_value=SimpleNamespace(

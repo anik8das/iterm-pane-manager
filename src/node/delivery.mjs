@@ -2,6 +2,27 @@ import { DOCUMENTS_PER_TAB, documentsToEvict } from "./budget.mjs";
 import { closeSessions, openDocument, retireDocuments, snapshot } from "./runtime.mjs";
 import { writeStateAtomic } from "./state.mjs";
 
+/** Keep cleanup recoverable until every verified predecessor has retired. */
+export function finishRetirement(paths, statePath, state, key, overrides = {}) {
+  const document = state.documents[key];
+  if (!Object.keys(document?.retiring ?? {}).length) return 0;
+  const retire = overrides.retire ?? ((entry) => retireDocuments(paths, entry));
+  const save = overrides.save ?? (() => writeStateAtomic(statePath, state));
+  const result = retire(document);
+  const closed = new Set(result.closed);
+  for (const session of closed) delete document.retiring[session];
+  for (const [otherKey, other] of Object.entries(state.documents)) {
+    if (otherKey !== key && closed.has(other.session)) delete state.documents[otherKey];
+  }
+  if (!Object.keys(document.retiring).length) {
+    delete document.retiring;
+    delete document.previous;
+  }
+  save();
+  if (result.kept.length) throw new Error(result.kept.join("; "));
+  return closed.size;
+}
+
 /** Persist a replacement before retiring any document that preceded it. */
 export function deliverDocument(paths, statePath, state, key, entry, live, overrides = {}) {
   const operations = {
@@ -13,26 +34,8 @@ export function deliverDocument(paths, statePath, state, key, entry, live, overr
     ...overrides,
   };
 
-  function finishRetirement() {
-    const document = state.documents[key];
-    if (!Object.keys(document?.retiring ?? {}).length) return 0;
-    const result = operations.retire(document);
-    const closed = new Set(result.closed);
-    for (const session of closed) delete document.retiring[session];
-    for (const [otherKey, other] of Object.entries(state.documents)) {
-      if (otherKey !== key && closed.has(other.session)) delete state.documents[otherKey];
-    }
-    if (!Object.keys(document.retiring).length) {
-      delete document.retiring;
-      delete document.previous;
-    }
-    operations.save();
-    if (result.kept.length) throw new Error(result.kept.join("; "));
-    return closed.size;
-  }
-
   // An interrupted cleanup must be settled before another split can grow it.
-  finishRetirement();
+  finishRetirement(paths, statePath, state, key, operations);
   const previous = state.documents[key] ?? null;
   const result = operations.open(entry);
   let retiring;
@@ -86,7 +89,7 @@ export function deliverDocument(paths, statePath, state, key, entry, live, overr
   }
 
   try {
-    const retired = finishRetirement();
+    const retired = finishRetirement(paths, statePath, state, key, operations);
     return { ...result, retired };
   } catch (error) {
     throw new Error(`document opened and tracked, but older panes could not be retired: ${error.message}`, { cause: error });

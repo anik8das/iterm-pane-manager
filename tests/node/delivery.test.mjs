@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { deliverDocument } from "../../src/node/delivery.mjs";
+import { deliverDocument, finishRetirement } from "../../src/node/delivery.mjs";
 
 function fixture() {
   const previous = { anchor: "code", url: "file:///doc.html", profile: "pane doc", session: "old", tab: "tab", opened: 1 };
@@ -56,6 +56,19 @@ test("failed retirement leaves the replacement tracked with recoverable old-pane
   assert.equal(f.state.documents.doc.session, "new");
   assert.deepEqual(f.state.documents.doc.retiring, { old: "pane doc" });
   assert.equal(f.events.some(([event]) => event === "removed"), false);
+});
+
+test("an explicit close can settle interrupted retirement without losing its identities", () => {
+  const f = fixture();
+  f.previous.retiring = { superseded: "pane doc" };
+  f.previous.previous = "superseded";
+  f.operations.retire = () => ({ closed: [], kept: ["document is being read"] });
+  assert.throws(() => finishRetirement({}, "unused", f.state, "doc", f.operations), /being read/);
+  assert.deepEqual(f.previous.retiring, { superseded: "pane doc" });
+  f.operations.retire = () => ({ closed: ["superseded"], kept: [] });
+  assert.equal(finishRetirement({}, "unused", f.state, "doc", f.operations), 1);
+  assert.equal(f.previous.retiring, undefined);
+  assert.equal(f.previous.previous, undefined);
 });
 
 test("a narrow tab retires a document before it can accumulate unreadable columns", () => {
