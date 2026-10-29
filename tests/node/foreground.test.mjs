@@ -73,6 +73,28 @@ test("a dangling startup-file symlink is preserved before any integration state 
   assert.equal(fs.existsSync(records), false);
 });
 
+test("classifier failures remain visible and leave the underlying command available", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pane-classifier-failure-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const payload = path.join(directory, "payload");
+  fs.mkdirSync(payload);
+  const installer = path.join(payload, "install-foreground.mjs");
+  fs.copyFileSync(path.resolve("agent/install-foreground.mjs"), installer);
+  const rc = path.join(directory, "shellrc");
+  const installed = spawnSync(process.execPath, [installer, "install", rc, path.join(directory, "records")]);
+  assert.equal(installed.status, 0);
+  fs.writeFileSync(path.join(directory, "codex"), '#!/bin/sh\nprintf "%s\\n" "$@"\n', { mode: 0o755 });
+  for (const scenario of ["missing classifier", "classifier exception", "missing node"]) {
+    if (scenario !== "missing classifier") fs.writeFileSync(path.join(payload, "foreground.mjs"), 'throw new Error("classifier unavailable");\n');
+    const result = spawnSync("/bin/bash", ["--noprofile", "--norc", "-c", 'source "$PANE_FIXTURE_RC"; codex "a prompt with spaces"'], {
+      encoding: "utf8", env: { ...process.env, PANE_FIXTURE_RC: rc, PATH: scenario === "missing node" ? directory : `${directory}${path.delimiter}${process.env.PATH}` },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, "a prompt with spaces\n");
+    assert.match(result.stderr, /foreground routing unavailable/, scenario);
+  }
+});
+
 test("the installed shell function preserves arguments and distinguishes interactive from service use", (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pane-launch-tty-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));

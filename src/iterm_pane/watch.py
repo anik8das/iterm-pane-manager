@@ -19,6 +19,10 @@ BURST_WINDOW = 20.0
 BACKOFF = 60.0
 
 
+class LayoutLockError(Exception):
+    """The command lock cannot be inspected safely; retain the layout."""
+
+
 def log(message):
     print("{}  {}".format(time.strftime("%H:%M:%S"), message), flush=True)
 
@@ -34,13 +38,22 @@ def layout_busy():
         with open(os.path.join(lock, "owner.json"), encoding="utf-8") as file:
             owner = json.load(file)
         pid = owner["pid"]
-        if not isinstance(pid, int) or pid < 1:
+        if not isinstance(pid, int) or isinstance(pid, bool) or pid < 1:
             raise ValueError("invalid pane lock owner")
-    except FileNotFoundError:
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        # Creation is not atomic: the directory can precede complete JSON.
+        # Match the command lock's existing grace, without guessing an owner.
         try:
-            return time.time() - os.stat(lock).st_mtime < 60
+            age = time.time() - os.stat(lock).st_mtime
         except FileNotFoundError:
             return False
+        except OSError as stat_error:
+            raise LayoutLockError(
+                f"cannot inspect command lock: {stat_error}"
+            ) from stat_error
+        if isinstance(error, PermissionError):
+            raise LayoutLockError(f"cannot read command lock: {error}") from error
+        return age < 60
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -55,7 +68,7 @@ async def request(operation, stage):
     try:
         return await asyncio.wait_for(operation, timeout=RPC_TIMEOUT)
     except asyncio.TimeoutError as error:
-        raise TimeoutError(f"{stage} exceeded {RPC_TIMEOUT:g}s") from error
+        raise asyncio.TimeoutError(f"{stage} exceeded {RPC_TIMEOUT:g}s") from error
 
 
 class Watcher:
@@ -258,7 +271,11 @@ class Watcher:
         try:
             await self.sweep(reason)
             return True
-        except (iterm2.rpc.RPCException, asyncio.TimeoutError) as error:
+        except (
+            iterm2.rpc.RPCException,
+            asyncio.TimeoutError,
+            LayoutLockError,
+        ) as error:
             detail = str(error) or type(error).__name__
             log(f"{reason}: sweep failed ({detail}); will reassess on the next event")
             return False

@@ -347,20 +347,27 @@ install_codex() {
   rm -f -- "$base" "$staged"
   say "instructions: $target"
   if command -v codex >/dev/null 2>&1 && codex --help 2>/dev/null | grep -q -- --no-daemon; then
-    node "$agent_source/install-foreground.mjs" install "$shell_rc" "$record_dir" || return 1
+    if ! node "$agent_source/install-foreground.mjs" install "$shell_rc" "$record_dir"; then
+      warn "foreground launcher installation failed; other wiring was retained"
+      return 1
+    fi
   fi
 }
 
 remove_codex() {
   remove_skill_link "$codex_home"
-  node "$agent_source/install-foreground.mjs" remove "$shell_rc" "$record_dir" || return 1
+  foreground_status=0
+  if [ -f "$record_dir/foreground-after" ] && ! node "$agent_source/install-foreground.mjs" remove "$shell_rc" "$record_dir"; then
+    warn "foreground launcher removal failed; continuing other cleanup"
+    foreground_status=1
+  fi
 
   target="$codex_home/AGENTS.md"
   if [ ! -f "$target" ]; then
-    return 0
+    return "$foreground_status"
   fi
   if ! grep -qF "$begin_marker" "$target" 2>/dev/null && ! grep -qF "$end_marker" "$target" 2>/dev/null; then
-    return 0
+    return "$foreground_status"
   fi
   staged="$codex_home/AGENTS.md.staged.$$"
   strip_codex_block "$target" "$staged" || { rm -f -- "$staged"; return 1; }
@@ -388,6 +395,7 @@ remove_codex() {
     say "instructions removed: $target (the file held only the managed block)"
   fi
   rm -f -- "$staged"
+  return "$foreground_status"
 }
 
 claude_found=0
@@ -427,4 +435,5 @@ else
   elif [ "$remove_status" -ne 0 ]; then
     warn "keeping $record_dir; re-run scripts/install-agent.sh --remove once the files above are fixed"
   fi
+  exit "$remove_status"
 fi

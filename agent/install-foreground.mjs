@@ -53,7 +53,7 @@ try {
     throw new Error("an existing foreground launcher is user-owned");
   }
   const classifier = path.join(path.dirname(process.argv[1]), "foreground.mjs");
-  const block = `${begin}\nif ! typeset -f codex >/dev/null && ! alias codex >/dev/null 2>&1; then\nfunction codex {\n  local pane_launch_mode\n  pane_launch_mode=$(command node ${quote(classifier)} "$@") || return\n  if [ "$pane_launch_mode" = foreground ]; then\n    command codex --no-daemon "$@"\n  else\n    command codex "$@"\n  fi\n}\nfi\n${end}\n`;
+  const block = `${begin}\nif ! typeset -f codex >/dev/null && ! alias codex >/dev/null 2>&1; then\nfunction codex {\n  local pane_launch_mode\n  if ! pane_launch_mode=$(command node ${quote(classifier)} "$@"); then\n    printf '%s\\n' 'pane: foreground routing unavailable; starting command unchanged' >&2\n    pane_launch_mode=unchanged\n  fi\n  if [ "$pane_launch_mode" = foreground ]; then\n    command codex --no-daemon "$@"\n  else\n    command codex "$@"\n  fi\n}\nfi\n${end}\n`;
   const next = managed ? text.slice(0, from) + block + text.slice(to) : text + (text && !text.endsWith("\n") ? "\n" : "") + block;
   fs.mkdirSync(recordDir, { recursive: true, mode: 0o700 });
   if (read(beforeFile) === null && read(absentFile) === null) {

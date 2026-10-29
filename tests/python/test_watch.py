@@ -1,5 +1,10 @@
 import argparse
 import asyncio
+import json
+import os
+import pathlib
+import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -47,6 +52,25 @@ class SweepSurvivesRoundFailures(unittest.IsolatedAsyncioTestCase):
     async def test_a_clean_sweep_still_reports_success(self):
         with mock.patch.object(watch.Watcher, "sweep", return_value=None):
             self.assertIs(await self.watcher.sweep_guarded("focus"), True)
+
+    async def test_an_unreadable_command_lock_is_reported_without_restarting(self):
+        with (
+            mock.patch.object(
+                watch.Watcher,
+                "sweep",
+                side_effect=watch.LayoutLockError("cannot inspect command lock"),
+            ),
+            mock.patch.object(watch, "log") as logged,
+        ):
+            self.assertIs(await self.watcher.sweep_guarded("event"), False)
+        self.assertIn("cannot inspect command lock", logged.call_args.args[0])
+
+    async def test_request_timeout_retains_its_stage_and_async_exception_type(self):
+        with (
+            mock.patch.object(watch, "RPC_TIMEOUT", 0),
+            self.assertRaisesRegex(asyncio.TimeoutError, "verification exceeded"),
+        ):
+            await watch.request(asyncio.sleep(1), "verification")
 
     async def test_a_lost_connection_still_ends_the_process(self):
         """launchd restarting is the right answer to a dead connection."""
@@ -101,8 +125,12 @@ class EventSchedulingTest(unittest.IsolatedAsyncioTestCase):
         wake = asyncio.Event()
         swept = asyncio.Event()
 
+        class SweepObserved(Exception):
+            """End the fixture when its first sweep has been measured."""
+
         async def sweep(_reason):
             swept.set()
+            raise SweepObserved
 
         async def stream():
             while True:
@@ -120,6 +148,8 @@ class EventSchedulingTest(unittest.IsolatedAsyncioTestCase):
                 await asyncio.wait_for(swept.wait(), 0.05 if focus else 0.3)
                 if focus:
                     self.assertEqual(called.call_args.args[0], "focus")
+                with self.assertRaises(SweepObserved):
+                    await runner
             finally:
                 runner.cancel()
                 producer.cancel()
@@ -130,6 +160,51 @@ class EventSchedulingTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_focus_interrupts_an_in_progress_event_window(self):
         await self.run_stream(focus=True)
+
+
+class LockCreationTest(unittest.TestCase):
+    def test_incomplete_and_invalid_records_have_a_bounded_creation_grace(self):
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(watch, "STATE_DIR", directory),
+        ):
+            lock = pathlib.Path(directory, "state.json.lock")
+            lock.mkdir()
+            owner = lock / "owner.json"
+            for value in (
+                "{",
+                "null",
+                "[]",
+                "{}",
+                json.dumps({"pid": True}),
+                json.dumps({"pid": -1}),
+            ):
+                owner.write_text(value)
+                os.utime(lock, None)
+                self.assertTrue(watch.layout_busy(), value)
+                past = time.time() - 61
+                os.utime(lock, (past, past))
+                self.assertFalse(watch.layout_busy(), value)
+
+    def test_unreadable_metadata_cannot_be_mistaken_for_an_idle_layout(self):
+        with (
+            mock.patch("builtins.open", side_effect=PermissionError("owner denied")),
+            mock.patch.object(
+                watch.os, "stat", return_value=type("Stat", (), {"st_mtime": 0})()
+            ),
+            self.assertRaisesRegex(watch.LayoutLockError, "cannot read command lock"),
+        ):
+            watch.layout_busy()
+        with (
+            mock.patch("builtins.open", side_effect=FileNotFoundError()),
+            mock.patch.object(
+                watch.os, "stat", side_effect=PermissionError("lock denied")
+            ),
+            self.assertRaisesRegex(
+                watch.LayoutLockError, "cannot inspect command lock"
+            ),
+        ):
+            watch.layout_busy()
 
 
 if __name__ == "__main__":

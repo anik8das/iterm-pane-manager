@@ -13,7 +13,7 @@ flowchart TD
     K["Live delivery lock"] -.->|defer sizing| J
 ```
 
-Canonical task and continuation record. The owner asked to repair uneven widths, misleading space errors, and foreground sessions refused as detached. On October 29 the owner authorized implementation after self-review and the full development cycle. The plan self-review passed. Implementation is pushed in pull request [39](https://github.com/anik8das/iterm-pane-manager/pull/39). Required hosted checks and shared review are in progress.
+The repairs address uneven widths, misleading space errors, and foreground sessions refused as detached. The implementation follows the existing command, helper, state-store, and watcher boundaries.
 
 ## Confirmed causes and repairs
 
@@ -83,37 +83,12 @@ stateDiagram-v2
 
 Before persistence, failure retains old documents and removes only the new candidate. After persistence, a cleanup failure is reported as an opened, tracked document with pending cleanup; it is not falsely reported as an unopened document. State and terminal errors stay visible. No retries or timeout increases were introduced.
 
-## Validation and remaining work
+## Verification and maintenance
 
-- Latest completed full gate: 96 Node tests, 67 Python tests, lint, formatting, audit, 72 installation assertions, and source guard all passed. Rerun after further edits before publication.
-- A real disposable terminal ran the complete command with a deliberately expired inherited address and no explicit anchor. Opening and closing both passed, with delivery to the correct background tab and focus unchanged. That fixture was closed afterward.
-- New tests cover steady event streams, focus interruption, deferred selection, stacked layouts, native minimums, split failure, state-write failure, pending cleanup, moved documents, shell installation/removal, foreign configuration, and argument preservation through a real terminal device.
-- The original watcher logged repeated 15-second timeouts without a stage. A later process sample proved that a native file-opening confirmation was running a modal loop, blocking terminal requests. The owner reported no remaining dialog; the interface then recovered and the background verification passed. Stage-specific diagnostics retain that distinction; timeout limits are unchanged.
-- The crash report later confirmed that the background-window probe triggered native `assert(profile)` in `iTermSessionFactory.m:379`, through profile-less new-window creation. The interruption was acknowledged to the owner. Do not use that probe again. The application and its interface recovered. Terminal servers and recovery data were preserved.
-- An earlier background-tab run timed out during sizing and cleanup. It was preserved as a failed result; the fixture was closed by its exact recorded terminal identity. The final integrated run passed all six deliveries, replacements, capacity retirement, and forced save-failure checks. Its owned fixture was closed. Focus comparisons use each operation's baseline, allowing normal user navigation between operations.
-- Live checks passed for selected-tab open/replacement, hidden-tab focus preservation, width-constrained retirement, mixed font sizes, stacked rows, and zoom exclusion. The mixed/stacked target deviation was 0.5 points; the window size was unchanged. The selected fixture was left alone when the owner navigated away. All owned fixtures with receipts were closed. The health check passed after the earlier application restart.
-- Local review also repaired close-after-interrupted-retirement bookkeeping, an anchor-move race during retirement, and a dangling shell-startup symlink being mistaken for an absent file. The installer now refuses that link before writing any integration record. Local diff review passed. Finish the owning-account pull request, hosted checks, one review through the shared review host, all finding dispositions, normal staged installation on this Mac, and installed-path verification. Do not install a candidate whose final health check cannot run.
+- Regression coverage includes continuous events, focus interruption, deferred selection, stacked geometry, native minimums, split/save failure, pending cleanup, moved panes, restored process devices, and reversible shell integration.
+- Live verification covered selected and hidden tabs, repeated replacement and capacity retirement, forced save failure, stale inherited addresses, mixed fonts, stacked rows, zoom exclusion, and unchanged window size. Focus was preserved; mixed/stacked deviation was 0.5 points.
+- Optional routing failures preserve the underlying command and remain visible. Incomplete removal preserves the records and runtime needed to finish cleanup. Partial lock-owner writes get the existing creation grace; unreadable metadata is reported and prevents mutation. Timeout exceptions retain compatibility with the supported Python boundary.
+- Terminal availability remains an external prerequisite. An unavailable interface does not prove the API setting is disabled. Connection failures remain visible and are not relabeled as ownership or pane-capacity problems. Versioned installation retains the previous runtime for rollback; additive pending-retirement identities remain in the normal state file.
+- Run `./scripts/check.sh` with the pinned Python environment and verify native focus behavior before merging a focus-sensitive change. No dependency or architectural gate was relaxed.
 
-## Live state and continuation
-
-- Worktree: `~/.local/share/agent-workspaces/iterm-pane-manager/pane-reliability`; branch `fix/pane-reliability`; base `d0d96d9`. Pull request 39 is open. Its current source revision is shown by the live commands below; a small installer-link correction follows the initial implementation.
-- Shared review host assigned owner `anik8das`. Overlap checks found no competing pane implementation; open requests were dependency updates. Do not change the review host's runtime installation or start another review ledger.
-- Main changes: `src/node/delivery.mjs` coordinates replacement and retirement; `sessions.py` supplies live geometry and verifies retirement; `layout.py` and `watch.py` handle safe sizing; `agent/foreground.mjs` and `agent/install-foreground.mjs` install reversible launch routing. `bin/pane.mjs` delegates delivery under its existing state lock.
-- The diagnostic foreground watcher ended when the terminal connection closed and its `finally` restored the existing watcher service. Its observation log is in the check environment; verify live processes rather than assuming it remains active.
-- Both installed coding tools are in scope. They share ownership, delivery, and sizing helpers; the removable foreground-launch integration addresses the tool that otherwise uses a detached execution service. The owner's 7:35 screenshot independently confirms the current shared connection outage.
-- Final installation is gated on a healthy native interface. After the successful live fixtures, a candidate health check timed out before connecting. A new native sample showed the main thread inside tab-bar cell layout, rather than the earlier file-opening confirmation. The owner reported no visible dialog. Do not represent this timeout as passed or raise its deadline. Continue review independently; preserve terminal servers and recovery data.
-- The existing watcher is now paused deliberately to prevent it competing with verification. It was not paused before this task. Resume it with the verified runtime before finishing; do not leave this temporary pause as the fix.
-- The previous pane preview attempt was refused because this executor's inherited tab address had expired. Do not retry with an invented anchor. Render updates without opening until a new foreground session has a valid identity.
-- Keep the worktree during open review. Remove only its dependencies and temporary fixtures after their use ends; never remove another workspace or an open-review checkout.
-
-```sh
-PANE_CHECK_ENV="$(getconf DARWIN_USER_TEMP_DIR)/pane-reliability-check.p97E12ZRP5"
-git status --short
-git log -1 --oneline
-PYTHON="$PANE_CHECK_ENV/venv/bin/python3" ./scripts/check.sh
-pane --doctor
-pane --watch-status
-tail -40 "$PANE_CHECK_ENV/watcher-observation.log"
-```
-
-Native references: [layout application contract](https://iterm2.com/python-api/app.html#iterm2.App.async_apply_layout), [native thin dividers](https://github.com/gnachman/iTerm2/blob/v3.7.6/sources/TerminalView/PTYTab.m#L117), [browser minimum and split constraints](https://github.com/gnachman/iTerm2/blob/v3.7.6/sources/TerminalView/PTYTab.m#L3276), [request handler](https://github.com/gnachman/iTerm2/blob/v3.7.6/sources/API/iTermAPIHelper.m#L2689), and [split preconditions](https://github.com/gnachman/iTerm2/blob/v3.7.6/sources/TerminalView/PseudoTerminal.m#L11645).
+Native references: [layout application contract](https://iterm2.com/python-api/app.html#iterm2.App.async_apply_layout), [thin dividers](https://github.com/gnachman/iTerm2/blob/v3.7.6/sources/TerminalView/PTYTab.m#L117), [browser minimum](https://github.com/gnachman/iTerm2/blob/v3.7.6/sources/TerminalView/PTYTab.m#L3276), and [split preconditions](https://github.com/gnachman/iTerm2/blob/v3.7.6/sources/TerminalView/PseudoTerminal.m#L11645).

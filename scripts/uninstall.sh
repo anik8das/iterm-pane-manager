@@ -26,10 +26,17 @@ remove_managed_link /usr/local/bin/mdrender
 remove_managed_link "$HOME/.local/bin/pane"
 remove_managed_link "$HOME/.local/bin/mdrender"
 
+remove_status=0
 if [ -f "$script_dir/install-agent.sh" ]; then
   if ! ITERM_PANE_INSTALL_ROOT="$install_root" "$script_dir/install-agent.sh" --remove; then
     printf 'uninstall: agent wiring removal reported an error; re-run scripts/install-agent.sh --remove\n' >&2
+    remove_status=1
   fi
+fi
+
+if [ "$remove_status" -ne 0 ]; then
+  printf 'uninstall: runtime and integration records retained at %s for cleanup\n' "$install_root" >&2
+  exit "$remove_status"
 fi
 
 case "$install_root" in
