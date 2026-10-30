@@ -71,6 +71,14 @@ async def request(operation, stage):
         raise asyncio.TimeoutError(f"{stage} exceeded {RPC_TIMEOUT:g}s") from error
 
 
+async def refresh(app, stage):
+    """End an unresponsive connection so the service manager can replace it."""
+    try:
+        await request(app.async_refresh(), stage)
+    except asyncio.TimeoutError as error:
+        raise ConnectionError(f"{error}; connection is no longer responsive") from error
+
+
 class Watcher:
     """Measure changes and resize only the selected tab when necessary."""
 
@@ -113,7 +121,7 @@ class Watcher:
         return window, window.current_tab
 
     async def sweep(self, reason):
-        await request(self.app.async_refresh(), "refresh before sizing")
+        await refresh(self.app, "refresh before sizing")
 
         if paused():
             if not self.was_paused:
@@ -206,7 +214,7 @@ class Watcher:
             elif applied is True:
                 applied_tabs.add(candidate.tab_id)
 
-        await request(self.app.async_refresh(), "refresh after sizing")
+        await refresh(self.app, "refresh after sizing")
         tabs_by_id = {
             current.tab_id: current
             for current_window in self.app.windows

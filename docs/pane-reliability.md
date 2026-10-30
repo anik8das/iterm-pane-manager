@@ -31,6 +31,20 @@ The repairs address uneven widths, misleading space errors, and foreground sessi
 
 The installed source matched `origin/main` at `d0d96d9`; repeating the earlier grid-to-point repair would have fixed nothing. Baseline live widths of 478/480/480 and 715/724 points were already within rounding tolerance.
 
+## Connection lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Responsive
+    Responsive --> Responsive: layout rejection defers one sweep
+    Responsive --> Unresponsive: hierarchy refresh times out
+    Unresponsive --> Exited: report connection failure
+    Exited --> Responsive: existing service manager starts a fresh process
+```
+
+- The watcher could keep a connection that stopped answering hierarchy reads. Fresh one-shot commands still returned eight sessions while the same watcher logged repeated 15-second read timeouts. Restarting only that watcher restored sizing, with no terminal-application restart: its next focus event corrected widths to 479/480 points.
+- `sweep_guarded` previously treated every timeout as a temporary layout failure and kept that connection indefinitely. A hierarchy-read timeout now ends its one connection lifecycle. The existing service manager owns restart and its existing delay; transient layout rejection still defers only that sweep. Timeout limits and connection count are unchanged.
+
 ## Native sizing diagnosis
 
 ```mermaid
