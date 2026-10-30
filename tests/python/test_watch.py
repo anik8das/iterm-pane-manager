@@ -101,6 +101,35 @@ class StartupIsNotAnExceptionToTheRule(unittest.IsolatedAsyncioTestCase):
     nothing the whole time.
     """
 
+    async def test_stalled_initial_hierarchy_ends_the_connection_lifecycle(self):
+        async def stalled(_connection):
+            await asyncio.Future()
+
+        with (
+            mock.patch.object(watch.iterm2, "async_get_app", side_effect=stalled),
+            mock.patch.object(watch, "RPC_TIMEOUT", 0),
+            mock.patch.object(watch, "log") as logged,
+            self.assertRaisesRegex(
+                ConnectionError, "initial hierarchy.*no longer responsive"
+            ),
+        ):
+            # The outer bound keeps the regression finite on the old code.
+            await asyncio.wait_for(watch.main(object(), options()), 1)
+        logged.assert_called_with("connected; loading initial hierarchy")
+
+    async def test_initial_hierarchy_is_passed_to_the_first_sweep(self):
+        app = object()
+        connection = object()
+        settings = options(once=True)
+        watcher = SimpleNamespace(sweep=mock.AsyncMock())
+        with (
+            mock.patch.object(watch.iterm2, "async_get_app", return_value=app),
+            mock.patch.object(watch, "Watcher", return_value=watcher) as factory,
+        ):
+            await watch.main(connection, settings)
+        factory.assert_called_once_with(app, settings)
+        watcher.sweep.assert_awaited_once_with("startup")
+
     async def run_main(self, once):
         async def nothing(*_args, **_kwargs):
             return None
