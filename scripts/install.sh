@@ -64,7 +64,7 @@ release_id="v${version}-$(date -u +%Y%m%dT%H%M%SZ)-$$"
 stage="$release_root/$release_id"
 bin_dir=$(choose_bin_dir)
 previous_target=
-switched=0
+promotion_started=0
 
 if [ -L "$current_link" ]; then
   previous_target=$(readlink "$current_link")
@@ -76,8 +76,8 @@ rollback() {
   if [ "$status" -eq 0 ]; then
     exit 0
   fi
-  launchctl bootout "$domain/$label" >/dev/null 2>&1 || true
-  if [ "$switched" -eq 1 ]; then
+  if [ "$promotion_started" -eq 1 ]; then
+    launchctl bootout "$domain/$label" >/dev/null 2>&1 || true
     if [ -n "$previous_target" ] && [ -d "$previous_target" ]; then
       atomic_link "$previous_target" "$current_link"
       "$current_link/bin/pane.mjs" --watch-install >/dev/null 2>&1 || true
@@ -121,9 +121,9 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$stage/src/iterm_pane" \
   -s "$stage/tests/python" -p 'test_*.py'
 
 mkdir -p -- "$install_root"
+promotion_started=1
 launchctl bootout "$domain/$label" >/dev/null 2>&1 || true
 atomic_link "$stage" "$current_link"
-switched=1
 atomic_link "$current_link/bin/pane.mjs" "$bin_dir/pane"
 atomic_link "$current_link/bin/mdrender.mjs" "$bin_dir/mdrender"
 

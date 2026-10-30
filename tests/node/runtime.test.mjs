@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import childProcess, { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -25,22 +26,27 @@ test("a timed-out document helper closes the pane named in its receipt", (t) => 
   const cleanup = path.join(directory, "cleanup.log");
 
   fs.writeFileSync(
-    document,
-    `import fs from "node:fs";
-const args = process.argv.slice(2);
-const receipt = args[args.indexOf("--receipt") + 1];
-fs.writeFileSync(receipt, "browser-partial");
-setTimeout(() => {}, 30_000);
-`,
-  );
-  fs.writeFileSync(
     sessions,
     `import fs from "node:fs";
 fs.writeFileSync(${JSON.stringify(cleanup)}, process.argv.slice(2).join(" "));
 `,
   );
 
-  const started = Date.now();
+  // Publish the receipt before injecting the timeout. Child startup latency
+  // must not decide which cleanup state this test exercises.
+  const originalExec = childProcess.execFileSync;
+  const execute = t.mock.method(childProcess, "execFileSync", (python, args, options) => {
+    if (args[0] !== document) return originalExec(python, args, options);
+    assert.equal(options.timeout, 2_000);
+    assert.equal(options.killSignal, "SIGKILL");
+    fs.writeFileSync(args[args.indexOf("--receipt") + 1], "browser-partial");
+    throw Object.assign(new Error("document helper ETIMEDOUT"), { code: "ETIMEDOUT" });
+  });
+  t.after(() => {
+    execute.mock.restore();
+    syncBuiltinESMExports();
+  });
+  syncBuiltinESMExports();
   assert.throws(
     () =>
       openDocument(
@@ -55,7 +61,6 @@ fs.writeFileSync(${JSON.stringify(cleanup)}, process.argv.slice(2).join(" "));
       ),
     /ETIMEDOUT/,
   );
-  assert.ok(Date.now() - started < 15_000, "the timeout must remain bounded");
   assert.equal(fs.readFileSync(cleanup, "utf8"), "close --session browser-partial");
 });
 
