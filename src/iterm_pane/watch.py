@@ -71,10 +71,10 @@ async def request(operation, stage):
         raise asyncio.TimeoutError(f"{stage} exceeded {RPC_TIMEOUT:g}s") from error
 
 
-async def refresh(app, stage):
+async def read_hierarchy(operation, stage):
     """End an unresponsive connection so the service manager can replace it."""
     try:
-        await request(app.async_refresh(), stage)
+        return await request(operation, stage)
     except asyncio.TimeoutError as error:
         raise ConnectionError(f"{error}; connection is no longer responsive") from error
 
@@ -121,7 +121,7 @@ class Watcher:
         return window, window.current_tab
 
     async def sweep(self, reason):
-        await refresh(self.app, "refresh before sizing")
+        await read_hierarchy(self.app.async_refresh(), "refresh before sizing")
 
         if paused():
             if not self.was_paused:
@@ -215,7 +215,7 @@ class Watcher:
             elif applied is True:
                 applied_tabs.add(candidate.tab_id)
 
-        await refresh(self.app, "refresh after sizing")
+        await read_hierarchy(self.app.async_refresh(), "refresh after sizing")
         tabs_by_id = {
             current.tab_id: current
             for current_window in self.app.windows
@@ -339,7 +339,11 @@ async def focus_events(connection, wake, watcher):
 
 
 async def main(connection, options):
-    app = await iterm2.async_get_app(connection)
+    if not options.once:
+        log("connected; loading initial hierarchy")
+    app = await read_hierarchy(
+        iterm2.async_get_app(connection), "load initial hierarchy"
+    )
     watcher = Watcher(app, options)
     if options.once:
         # `--once` reports a failed sweep through its own exit code, so it
@@ -396,6 +400,7 @@ if __name__ == "__main__":
             sys.exit(3)
         sys.exit(0)
 
+    log("connecting to iTerm2")
     try:
         iterm2.run_until_complete(run)
         log("iTerm2 closed the connection")

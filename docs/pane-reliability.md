@@ -38,15 +38,20 @@ The installed source matched `origin/main` at `d0d96d9`; repeating the earlier g
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Responsive
+    [*] --> Connecting
+    Connecting --> LoadingHierarchy: authenticated
+    Connecting --> Exited: connection setup fails
+    LoadingHierarchy --> Responsive: initial read completes
+    LoadingHierarchy --> Unresponsive: initial read times out
     Responsive --> Responsive: layout rejection defers one sweep
     Responsive --> Unresponsive: hierarchy refresh times out
     Unresponsive --> Exited: report connection failure
-    Exited --> Responsive: existing service manager starts a fresh process
+    Exited --> Connecting: existing service manager starts a fresh process
 ```
 
 - The watcher could keep a connection that stopped answering hierarchy reads. Fresh one-shot commands still returned eight sessions while the same watcher logged repeated 15-second read timeouts. Restarting only that watcher restored sizing, with no terminal-application restart: its next focus event corrected widths to 479/480 points.
 - `sweep_guarded` previously treated every timeout as a temporary layout failure and kept that connection indefinitely. A hierarchy-read timeout now ends its one connection lifecycle. The existing service manager owns restart and its existing delay; transient layout rejection still defers only that sweep. Timeout limits and connection count are unchanged.
+- Initial hierarchy construction had a separate unbounded await in `watch.main`. A regression with a non-returning constructor reproduced a watcher that never reached its startup sweep. It now uses the same read deadline and connection failure policy as later refreshes. Startup phase logs distinguish connection setup from hierarchy loading. This closes a source recovery gap; it does not establish the cause of every observed native-interface stall or bound the terminal SDK's authentication phase.
 
 ## Native sizing diagnosis
 

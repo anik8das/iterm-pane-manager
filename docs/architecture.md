@@ -149,6 +149,8 @@ equal-width request is reported and left alone until geometry changes.
 
 The installer creates one per-user LaunchAgent named `io.github.anik8das.iterm-pane-manager`. **LaunchAgent** means a macOS background process owned by the signed-in user. macOS owns restart policy; the watcher owns one iTerm2 connection lifecycle and exits on disconnect. There is no internal reconnect loop.
 
+Initial hierarchy loading and later hierarchy refreshes share the existing 15-second read deadline. A timed-out read ends the connection lifecycle, allowing the service manager to replace it. Startup logs distinguish connecting, connected/loading, and watching; authentication stays within the existing terminal SDK boundary.
+
 Versioned releases are stored below `~/.local/share/iterm-pane-manager/releases`. The `current` symlink is changed only after dependencies and tests pass. Watcher startup and `pane --doctor` are the final promotion gates.
 
 ## Agent integration
