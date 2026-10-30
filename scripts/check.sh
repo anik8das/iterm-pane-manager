@@ -17,6 +17,7 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$repo_root/src/iterm_pane" \
 shellcheck scripts/*.sh tests/shell/*.sh
 sh tests/shell/blocked-patterns-test.sh
 sh tests/shell/agent-install-test.sh
+sh tests/shell/install-staging-test.sh
 
 # shellcheck source=scripts/blocked-patterns.sh
 . "$script_dir/blocked-patterns.sh"
