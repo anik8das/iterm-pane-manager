@@ -198,7 +198,7 @@ def native_tree(node):
     return {"vertical": node.vertical, "children": children}
 
 
-async def even_tab(tab, *, app=None, content=None, allowed=None):
+async def even_tab(tab, *, app=None, content=None, allowed=None, tolerance=TOLERANCE):
     """Convert equal physical shares to each pane's own grid units.
 
     Preferred sizes are cell counts, not weights. Browser grids use points,
@@ -213,7 +213,7 @@ async def even_tab(tab, *, app=None, content=None, allowed=None):
         if min(size.width, size.height, grid.width, grid.height) <= 0:
             return None  # A split may still be acquiring its initial geometry.
     content = content or extent(tab)
-    if needs_evening(tab, content) is None:
+    if needs_evening(tab, content, tolerance) is None:
         return False
     _, targets = point_targets(tab.root, content)
     preferences = []

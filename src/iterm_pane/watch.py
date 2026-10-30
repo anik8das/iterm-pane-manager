@@ -199,6 +199,7 @@ class Watcher:
                         candidate,
                         app=self.app,
                         content=layout.content_size(window),
+                        tolerance=self.options.tolerance,
                         allowed=lambda target=candidate: (
                             self.active_tab() == (window, target) and not layout_busy()
                         ),
