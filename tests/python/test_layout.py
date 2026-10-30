@@ -38,6 +38,20 @@ class Tab:
 
 
 class LayoutTest(unittest.IsolatedAsyncioTestCase):
+    async def test_native_sizing_honors_a_stricter_configured_tolerance(self):
+        tab = Tab(
+            [Session("a", frame(0, 0, 495, 700)), Session("b", frame(496, 0, 505, 700))]
+        )
+        tab.tab_id = "target-tab"
+        app = SimpleNamespace(
+            connection=SimpleNamespace(iterm2_protocol_version=(1, 14)),
+            async_apply_layout=mock.AsyncMock(),
+        )
+        self.assertIs(await layout.even_tab(tab, app=app), False)
+        app.async_apply_layout.assert_not_awaited()
+        self.assertIs(await layout.even_tab(tab, app=app, tolerance=2), True)
+        app.async_apply_layout.assert_awaited_once()
+
     async def test_native_layout_preserves_the_tree_and_avoids_the_grid_size_rpc(self):
         sessions = [
             Session("a", frame(0, 0, 400, 700)),

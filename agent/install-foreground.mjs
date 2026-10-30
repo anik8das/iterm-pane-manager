@@ -38,14 +38,16 @@ try {
   const to = managed ? ends[0].index + end.length + (text[ends[0].index + end.length] === "\n" ? 1 : 0) : text.length;
   const base = managed ? text.slice(0, from) + text.slice(to) : text;
   if (action === "remove") {
-    if (!managed || read(afterFile) === null) process.exit(0);
-    if (text === read(afterFile)) {
-      const before = read(beforeFile);
-      if (read(absentFile) !== null && !fs.lstatSync(target).isSymbolicLink()) fs.unlinkSync(target);
-      else write(target, before ?? "");
-    } else write(target, base);
+    if (managed) {
+      if (read(afterFile) === null) process.exit(0);
+      if (text === read(afterFile)) {
+        const before = read(beforeFile);
+        if (read(absentFile) !== null && !fs.lstatSync(target).isSymbolicLink()) fs.unlinkSync(target);
+        else write(target, before ?? "");
+      } else write(target, base);
+    }
     for (const file of [beforeFile, afterFile, absentFile]) fs.rmSync(file, { force: true });
-    console.log(`foreground launcher removed: ${target}`);
+    if (managed) console.log(`foreground launcher removed: ${target}`);
     process.exit(0);
   }
   if (action !== "install") throw new Error("expected install or remove");

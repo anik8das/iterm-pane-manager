@@ -78,11 +78,13 @@ test("the usage text says a detached process is refused", () => {
   assert.match(result.stdout, /PANE_ANCHOR/);
 });
 
-test("a command with no tab to address does not pay for an ownership check", () => {
-  // Outside iTerm2 there is no anchor, so nothing is asked about it.
-  const result = run(["--close-all"]);
-  assert.doesNotMatch(result.stderr, /no iTerm2 session/);
-  assert.doesNotMatch(result.stderr, /not in the tab named by/);
+test("closing and sizing refuse a missing terminal address before reaching the API", () => {
+  for (const args of [["--close-all"], ["--close-all", "--all"], ["--even", "--all"]]) {
+    const result = run(args);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /ITERM_SESSION_ID is missing/);
+    assert.doesNotMatch(result.stderr, /no-such-python/);
+  }
 });
 
 test("ownership is settled before any Markdown is rendered", () => {

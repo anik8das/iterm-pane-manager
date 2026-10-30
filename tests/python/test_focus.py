@@ -115,6 +115,13 @@ class FocusSafeWatcherTest(unittest.IsolatedAsyncioTestCase):
             await self.watcher.sweep("focus")
             watch.layout.even_tab.assert_not_awaited()
 
+    async def test_measurement_and_sizing_use_the_same_configured_tolerance(self):
+        self.watcher.options.tolerance = 2
+        with self.layout_patches():
+            await self.watcher.sweep("focus")
+            self.assertEqual(watch.layout.needs_evening.call_args.args[2], 2)
+            self.assertEqual(watch.layout.even_tab.await_args.kwargs["tolerance"], 2)
+
     async def test_inactive_app_never_mutates_layout(self):
         self.app.app_active = False
         with self.layout_patches():

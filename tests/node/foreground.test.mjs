@@ -50,6 +50,28 @@ test("launcher installation preserves foreign definitions and malformed markers"
   }
 });
 
+test("removing an absent launcher forgets obsolete restoration records", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pane-foreground-records-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const rc = path.join(directory, "zshrc");
+  const records = path.join(directory, "records");
+  const run = (action) => spawnSync(process.execPath, [path.resolve("agent/install-foreground.mjs"), action, rc, records], { encoding: "utf8" });
+  for (const [original, replacement] of [["# obsolete startup file\n", null], [null, null], ["# obsolete startup file\n", "# manually replaced startup file\n"]]) {
+    fs.rmSync(rc, { force: true });
+    if (original !== null) fs.writeFileSync(rc, original);
+    assert.equal(run("install").status, 0);
+    if (replacement === null) fs.unlinkSync(rc);
+    else fs.writeFileSync(rc, replacement);
+    assert.equal(run("remove").status, 0);
+    assert.deepEqual(fs.readdirSync(records), []);
+    const fresh = "# fresh startup file without final newline";
+    fs.writeFileSync(rc, fresh);
+    assert.equal(run("install").status, 0);
+    assert.equal(run("remove").status, 0);
+    assert.equal(fs.readFileSync(rc, "utf8"), fresh);
+  }
+});
+
 test("classification still runs through the installed current-release symlink", (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pane-release-link-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
