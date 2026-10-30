@@ -6,6 +6,7 @@ import pathlib
 import tempfile
 import time
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 import iterm2
@@ -48,6 +49,15 @@ class SweepSurvivesRoundFailures(unittest.IsolatedAsyncioTestCase):
             mock.patch.object(watch, "log"),
         ):
             self.assertIs(await self.watcher.sweep_guarded("poll"), False)
+
+    async def test_an_unresponsive_refresh_ends_the_connection_lifecycle(self):
+        self.watcher.app = SimpleNamespace(
+            async_refresh=mock.AsyncMock(side_effect=asyncio.TimeoutError())
+        )
+        with self.assertRaisesRegex(
+            ConnectionError, "refresh before sizing.*no longer responsive"
+        ):
+            await self.watcher.sweep_guarded("poll")
 
     async def test_a_clean_sweep_still_reports_success(self):
         with mock.patch.object(watch.Watcher, "sweep", return_value=None):
